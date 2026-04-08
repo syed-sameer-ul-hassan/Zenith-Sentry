@@ -1,0 +1,5 @@
+network:
+  suspicious_ports: [4444, 5555, 1337]
+  ignore_loopback: true
+persistence:
+  scan_dirs: []
