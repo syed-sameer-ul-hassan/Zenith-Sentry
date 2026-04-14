@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.svg" alt="Zenith-Sentry Logo" width="200"/>
+  <img src="logo.svg" alt="Zenith-Sentry Logo" width="600"/>
 </p>
 
 <h1 align="center">Zenith-Sentry EDR</h1>
