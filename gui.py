@@ -2,20 +2,24 @@ import curses
 import sys
 import os
 import io
-import time
+import logging
 from contextlib import redirect_stdout
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from main import main as cli_main
 from zenith.engine import ZenithEngine
+
+logging.getLogger().setLevel(logging.CRITICAL)
 
 
 class DummyArgs:
-    def __init__(self, command, risk_threshold=0, json=False, profile="config.yaml"):
+    """Mock args object for TUI -> Engine interface."""
+    def __init__(self, command, risk_threshold=0, json=False, profile="config.yaml", ebpf=False):
         self.command = command
         self.risk_threshold = risk_threshold
         self.json = json
+        self.ebpf = ebpf
         self.profile = os.path.join(os.path.dirname(os.path.abspath(__file__)), profile)
+
 
 def draw_header(stdscr):
     logo = """

@@ -1,2 +1,7 @@
+# Core Dependencies (Required)
 psutil==5.9.8
 pyyaml==6.0.1
+
+# Optional: eBPF Kernel Monitoring
+# Uncomment and install system deps (kernel-headers, libbpf-dev, bpf-tools)
+# bcc

@@ -1,14 +1,32 @@
+"""Core data models and detector interface for Zenith-Sentry."""
+
 import uuid
 from dataclasses import dataclass, field
 from enum import IntEnum
-from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-class RiskLevel(IntEnum): INFO=0; LOW=25; MEDIUM=50; HIGH=75; CRITICAL=100
-class Severity(IntEnum): LOW=1; MEDIUM=2; HIGH=3; CRITICAL=4
+
+class RiskLevel(IntEnum):
+    """Risk severity levels mapping to confidence scores."""
+    INFO = 0
+    LOW = 25
+    MEDIUM = 50
+    HIGH = 75
+    CRITICAL = 100
+
+
+class Severity(IntEnum):
+    """Alert severity classification (CVSS-inspired)."""
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+
 
 @dataclass
 class Finding:
+    """Structured threat finding with MITRE ATT&CK mapping."""
+    
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     module: str = "Unknown"
     risk: RiskLevel = RiskLevel.INFO
@@ -16,7 +34,30 @@ class Finding:
     tactic: str = "Unknown"
     description: str = "No description"
     evidence: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate finding fields."""
+        if not isinstance(self.risk, RiskLevel):
+            raise TypeError(f"risk must be RiskLevel, got {type(self.risk)}")
+        if not isinstance(self.severity, Severity):
+            raise TypeError(f"severity must be Severity, got {type(self.severity)}")
+        if not isinstance(self.evidence, dict):
+            raise TypeError(f"evidence must be dict, got {type(self.evidence)}")
+
 
 class IDetector:
-    name: str = "Base"
-    def analyze(self) -> List[Finding]: return []
+    """Base interface for all threat detectors."""
+    
+    name: str = "BaseDetector"
+    
+    def analyze(self) -> List[Finding]:
+        """Analyze telemetry and return findings.
+        
+        Returns:
+            list: Findings discovered during analysis
+            
+        Raises:
+            NotImplementedError: Must be implemented by subclasses
+        """
+        raise NotImplementedError("Subclasses must implement analyze()")
+
