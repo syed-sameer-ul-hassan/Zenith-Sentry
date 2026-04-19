@@ -4,11 +4,6 @@
 
 <h1 align="center">Zenith-Sentry EDR v2.0</h1>
 
-<p align="center">
-  <i>A Production-Ready, High-Performance Endpoint Detection & Response (EDR) Toolkit for Linux</i>
-  <br/>
-  <i>Engineered for the "Assume Breach" Era — Proactive Threat Hunting & Real-Time Kernel Mitigation.</i>
-</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python" alt="Python"/>
