@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Zenith-Sentry: Linux EDR Command Center — Real-time threat detection and system monitoring." />
+  <title>ZENITH-SENTRY | Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <div class="scanline-overlay" aria-hidden="true"></div>
+
+  <header id="header" role="banner">
+    <nav class="nav-inner" role="navigation" aria-label="Primary navigation">
+      <a href="/" class="brand" aria-label="Zenith-Sentry Home">
+        <span class="brand-icon" aria-hidden="true">⬡</span>
+        <span class="brand-name cyan-glow">ZENITH-SENTRY</span>
+        <span class="brand-tag">v2.0 EDR</span>
+      </a>
+      <ul class="nav-links" role="list">
+        <li><a href="#dashboard" class="nav-link active" data-section="dashboard">[ DASHBOARD ]</a></li>
+        <li><a href="#findings" class="nav-link" data-section="findings">[ FINDINGS ]</a></li>
+        <li><a href="#defense" class="nav-link" data-section="defense">[ DEFENSE ]</a></li>
+        <li><a href="#system" class="nav-link" data-section="system">[ SYSTEM ]</a></li>
+      </ul>
+      <div class="nav-status" id="connectionStatus" aria-live="polite">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-label" id="statusLabel">CONNECTING...</span>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main-content" role="main">
+
+    <section id="dashboard" class="section active" aria-labelledby="dashHeading">
+      <div class="section-header">
+        <div>
+          <h1 id="dashHeading" class="section-title cyan-glow">COMMAND TERMINAL</h1>
+          <p class="section-sub">SYSTEM HEALTH // REAL-TIME</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn-tactical" id="runScanBtn" onclick="triggerScan('full-scan')" aria-label="Execute full system scan">
+            <span class="btn-icon">▶</span> [ EXECUTE SCAN ]
+          </button>
+          <span class="live-badge" id="liveBadge">
+            <span class="pulse-dot"></span> LIVE
+          </span>
+        </div>
+      </div>
+
+      <div class="cards-grid" id="statsGrid" role="region" aria-label="Key metrics">
+        <div class="stat-card" id="scoreCard">
+          <div class="stat-label">RISK SCORE</div>
+          <div class="stat-value cyan-glow" id="riskScore">—</div>
+          <div class="stat-meta" id="riskLevel">LOADING...</div>
+        </div>
+        <div class="stat-card" id="findingsCard">
+          <div class="stat-label">FINDINGS</div>
+          <div class="stat-value" id="findingsCount">—</div>
+          <div class="stat-meta" id="lastScanTime">NO SCAN YET</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">CPU USAGE</div>
+          <div class="stat-value" id="cpuValue">—</div>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="cpuBar"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">MEMORY USED</div>
+          <div class="stat-value" id="memValue">—</div>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="memBar"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">DISK USAGE</div>
+          <div class="stat-value" id="diskValue">—</div>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="diskBar"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">PROCESSES</div>
+          <div class="stat-value" id="procCount">—</div>
+          <div class="stat-meta">ACTIVE NOW</div>
+        </div>
+      </div>
+
+      <div class="main-grid">
+
+        <div class="col-left">
+
+          <div class="panel" id="networkPanel" aria-labelledby="netHead">
+            <div class="panel-header">
+              <h2 id="netHead" class="panel-title cyan-glow">▸ NETWORK ACTIVITY</h2>
+              <button class="panel-refresh" onclick="loadNetworkData()" aria-label="Refresh network data">⟳</button>
+            </div>
+            <div class="net-grid" id="netGrid">
+              <div class="net-cell"><div class="net-label">TOTAL CONNS</div><div class="net-val" id="netTotal">—</div></div>
+              <div class="net-cell"><div class="net-label">ESTABLISHED</div><div class="net-val" id="netEstab">—</div></div>
+              <div class="net-cell"><div class="net-label">LISTENING</div><div class="net-val" id="netListen">—</div></div>
+              <div class="net-cell"><div class="net-label">TIME_WAIT</div><div class="net-val" id="netTimeWait">—</div></div>
+            </div>
+            <div class="table-wrap" style="max-height:200px; margin-top:12px;">
+              <table class="data-table" id="networkTable" aria-label="Network connections">
+                <thead><tr><th>LOCAL</th><th>REMOTE</th><th>STATUS</th><th>PID</th></tr></thead>
+                <tbody id="networkBody"><tr><td colspan="4" class="loading-cell">LOADING...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel" id="processPanel" aria-labelledby="procHead">
+            <div class="panel-header">
+              <h2 id="procHead" class="panel-title cyan-glow">▸ ACTIVE PROCESSES</h2>
+              <button class="panel-refresh" onclick="loadProcessData()" aria-label="Refresh process list">⟳</button>
+            </div>
+            <div class="table-wrap" style="max-height:260px;">
+              <table class="data-table" id="processTable" aria-label="Running processes">
+                <thead><tr><th>PID</th><th>NAME</th><th>USER</th><th>COMMAND</th></tr></thead>
+                <tbody id="processBody"><tr><td colspan="4" class="loading-cell">LOADING...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col-right">
+
+          <div class="panel" id="cmdPanel" aria-labelledby="cmdHead">
+            <div class="panel-header">
+              <h2 id="cmdHead" class="panel-title cyan-glow">▸ COMMAND EXECUTION</h2>
+            </div>
+            <div class="cmd-buttons">
+              <button class="btn-tactical" onclick="triggerScan('full-scan')">[ FULL SCAN ]</button>
+              <button class="btn-tactical" onclick="triggerScan('network')">[ NET SCAN ]</button>
+              <button class="btn-tactical" onclick="triggerScan('process')">[ PROC SCAN ]</button>
+              <button class="btn-tactical" onclick="triggerScan('persistence')">[ PERSIST SCAN ]</button>
+              <button class="btn-tactical" onclick="triggerScan('fim')">[ FIM SCAN ]</button>
+            </div>
+
+            <div class="lockdown-module" id="lockdownModule" role="button" tabindex="0" aria-label="System Lockdown — authorize total isolation">
+              <div class="lockdown-hazard" aria-hidden="true">⚠ ⚠ ⚠ ⚠</div>
+              <div class="lockdown-icon" aria-hidden="true">🔒</div>
+              <div>
+                <div class="lockdown-title">SYSTEM LOCKDOWN</div>
+                <div class="lockdown-sub">AUTHORIZE TOTAL ISOLATION</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel panel-tall" id="eventPanel" aria-labelledby="evtHead">
+            <div class="panel-header">
+              <h2 id="evtHead" class="panel-title cyan-glow">▸ EVENT STREAM</h2>
+              <button class="panel-refresh" onclick="loadEventStream()" aria-label="Refresh event log">⟳</button>
+            </div>
+            <div class="event-log" id="eventLog" aria-live="polite" aria-label="Real-time security events">
+              <div class="event-row"><span class="evt-time">[--:--:--]</span><span class="evt-type info">INFO</span><span class="evt-msg">AWAITING DATA FROM BACKEND...</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <section id="findings" class="section" aria-labelledby="findingsHeading">
+      <div class="section-header">
+        <div>
+          <h1 id="findingsHeading" class="section-title cyan-glow">THREAT FINDINGS</h1>
+          <p class="section-sub">ALL DETECTED SECURITY EVENTS</p>
+        </div>
+        <div class="header-actions">
+          <select class="filter-select" id="riskFilter" onchange="filterFindings()" aria-label="Filter by risk level">
+            <option value="">ALL RISK LEVELS</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="HIGH">HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="LOW">LOW</option>
+            <option value="INFO">INFO</option>
+          </select>
+          <button class="btn-tactical" onclick="loadFindings()">[ REFRESH ]</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="data-table" id="findingsTable" aria-label="Security findings">
+            <thead><tr><th>RISK</th><th>MODULE</th><th>TACTIC</th><th>DESCRIPTION</th><th>SEVERITY</th></tr></thead>
+            <tbody id="findingsBody"><tr><td colspan="5" class="loading-cell">RUN A SCAN TO SEE FINDINGS</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="defense" class="section" aria-labelledby="defenseHeading">
+      <div class="section-header">
+        <div>
+          <h1 id="defenseHeading" class="section-title cyan-glow">DEFENSE CONTROLS</h1>
+          <p class="section-sub">THREAT MITIGATION // ACTIVE PROTOCOLS</p>
+        </div>
+      </div>
+      <div class="main-grid">
+        <div class="col-left">
+          <div class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title cyan-glow">▸ SCAN HISTORY</h2>
+              <button class="panel-refresh" onclick="loadScanHistory()" aria-label="Refresh scan history">⟳</button>
+            </div>
+            <div class="table-wrap" style="max-height:400px;">
+              <table class="data-table" id="scanHistoryTable" aria-label="Scan history">
+                <thead><tr><th>SCAN ID</th><th>TIMESTAMP</th><th>SCORE</th><th>FINDINGS</th><th>STATUS</th></tr></thead>
+                <tbody id="scanHistoryBody"><tr><td colspan="5" class="loading-cell">NO SCANS IN HISTORY</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-right">
+          <div class="panel">
+            <div class="panel-header"><h2 class="panel-title cyan-glow">▸ ACTIVE CONFIGURATION</h2></div>
+            <div id="configDisplay" class="config-display">
+              <div class="config-section">
+                <div class="config-key">SUSPICIOUS PORTS</div>
+                <div class="config-val" id="cfgPorts">LOADING...</div>
+              </div>
+              <div class="config-section">
+                <div class="config-key">SCAN DIRECTORIES</div>
+                <div class="config-val" id="cfgDirs">LOADING...</div>
+              </div>
+              <div class="config-section">
+                <div class="config-key">EBPF CRITICAL BINS</div>
+                <div class="config-val" id="cfgBins">LOADING...</div>
+              </div>
+              <div class="config-section">
+                <div class="config-key">MITIGATION MODE</div>
+                <div class="config-val" id="cfgMitigation">LOADING...</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:16px;">
+            <div class="panel-header"><h2 class="panel-title cyan-glow">▸ QUICK TRIGGERS</h2></div>
+            <div class="cmd-buttons">
+              <button class="btn-tactical" onclick="triggerScan('hunt')">[ THREAT HUNT ]</button>
+              <button class="btn-tactical" onclick="triggerScan('fim')">[ INTEGRITY CHECK ]</button>
+              <button class="btn-tactical" onclick="triggerScan('persistence')">[ PERSISTENCE SCAN ]</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="system" class="section" aria-labelledby="systemHeading">
+      <div class="section-header">
+        <div>
+          <h1 id="systemHeading" class="section-title cyan-glow">SYSTEM INTELLIGENCE</h1>
+          <p class="section-sub">KERNEL INFO // HARDWARE // NETWORK STATE</p>
+        </div>
+        <button class="btn-tactical" onclick="loadSystemData()">[ REFRESH ALL ]</button>
+      </div>
+      <div class="main-grid">
+        <div class="col-left">
+          <div class="panel">
+            <div class="panel-header"><h2 class="panel-title cyan-glow">▸ SYSTEM INFORMATION</h2></div>
+            <div id="sysInfoDisplay" class="config-display">
+              <div class="config-section"><div class="config-key">OS</div><div class="config-val" id="sysOs">—</div></div>
+              <div class="config-section"><div class="config-key">KERNEL</div><div class="config-val" id="sysKernel">—</div></div>
+              <div class="config-section"><div class="config-key">HOSTNAME</div><div class="config-val" id="sysHost">—</div></div>
+              <div class="config-section"><div class="config-key">ARCH</div><div class="config-val" id="sysArch">—</div></div>
+              <div class="config-section"><div class="config-key">PROCESSOR</div><div class="config-val" id="sysCpu">—</div></div>
+              <div class="config-section"><div class="config-key">CPU CORES</div><div class="config-val" id="sysCores">—</div></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:16px;">
+            <div class="panel-header"><h2 class="panel-title cyan-glow">▸ RESOURCE UTILIZATION</h2></div>
+            <div class="resource-bars" id="resourceBars">
+              <div class="res-row">
+                <div class="res-label">CPU</div>
+                <div class="stat-bar-wrap flex-1"><div class="stat-bar" id="sysCpuBar"></div></div>
+                <div class="res-val" id="sysCpuVal">—</div>
+              </div>
+              <div class="res-row">
+                <div class="res-label">RAM</div>
+                <div class="stat-bar-wrap flex-1"><div class="stat-bar" id="sysRamBar"></div></div>
+                <div class="res-val" id="sysRamVal">—</div>
+              </div>
+              <div class="res-row">
+                <div class="res-label">DISK</div>
+                <div class="stat-bar-wrap flex-1"><div class="stat-bar" id="sysDiskBar"></div></div>
+                <div class="res-val" id="sysDiskVal">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-right">
+          <div class="panel panel-tall">
+            <div class="panel-header">
+              <h2 class="panel-title cyan-glow">▸ ALL PROCESSES</h2>
+              <button class="panel-refresh" onclick="loadFullProcessList()" aria-label="Refresh full process list">⟳</button>
+            </div>
+            <div class="table-wrap" style="max-height:500px;">
+              <table class="data-table" id="fullProcTable" aria-label="Full process list">
+                <thead><tr><th>PID</th><th>NAME</th><th>USER</th></tr></thead>
+                <tbody id="fullProcBody"><tr><td colspan="3" class="loading-cell">LOADING...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="toast" id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+  <div class="modal-bg" id="scanModal" aria-modal="true" role="dialog" aria-labelledby="scanModalTitle" hidden>
+    <div class="modal-box">
+      <h2 id="scanModalTitle" class="modal-title cyan-glow">EXECUTING SCAN...</h2>
+      <div class="modal-spinner" aria-hidden="true"></div>
+      <p class="modal-sub" id="scanModalSub">Collecting telemetry data...</p>
+      <div class="modal-log" id="scanModalLog"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

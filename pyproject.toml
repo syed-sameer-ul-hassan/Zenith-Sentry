@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "zenith-sentry"
+version = "0.1.0"
+description = "Linux Endpoint Detection and Response (EDR) tool with eBPF-based kernel telemetry"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Zenith-Sentry Contributors"}
+]
+keywords = [
+    "edr",
+    "endpoint-detection",
+    "response",
+    "ebpf",
+    "linux-security",
+    "threat-detection",
+    "kernel-monitoring",
+    "mitigation"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    "psutil>=5.9.8",
+    "pyyaml>=6.0.1",
+    "cryptography>=41.0.7",
+]
+[project.optional-dependencies]
+ebpf = [
+    "bcc>=0.25.0",
+]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "coverage>=7.3.2",
+    "black>=23.12.1",
+    "flake8>=6.1.0",
+    "mypy>=1.7.1",
+    "bandit>=1.7.6",
+    "safety>=2.3.5",
+]
+[project.urls]
+Homepage = "https://github.com/yourusername/zenith-sentry"
+Documentation = "https://github.com/yourusername/zenith-sentry#readme"
+Repository = "https://github.com/yourusername/zenith-sentry"
+Issues = "https://github.com/yourusername/zenith-sentry/issues"
+[project.scripts]
+zenith-sentry = "main:main"
+zenith-sentry-gui = "gui:main"
+zenith-monitor = "process_execve_monitor:main"
+[tool.setuptools.packages.find]
+include = ["zenith*"]
+[tool.setuptools.package-data]
+zenith = ["ebpf/*.c", "ebpf/*.h"]
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.eggs
+  | build
+  | dist
+)/
+'''
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "security: marks tests as security tests",
+    "root: marks tests that require root privileges",
+]
+[tool.coverage.run]
+source = ["zenith"]
+branch = true
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+[tool.bandit]
+exclude_dirs = ["/tests", "/venv"]
+skips = ["B101"]

@@ -1,0 +1,4 @@
+psutil>=5.9.8
+pyyaml>=6.0.1
+cryptography>=41.0.7
+bcc>=0.25.0

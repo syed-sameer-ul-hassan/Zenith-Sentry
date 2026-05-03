@@ -1,7 +1,12 @@
-# Core Dependencies (Required)
 psutil==5.9.8
 pyyaml==6.0.1
-
-# Optional: eBPF Kernel Monitoring
-# Uncomment and install system deps (kernel-headers, libbpf-dev, bpf-tools)
-# bcc
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+coverage==7.3.2
+bandit==1.7.6
+safety==2.3.5
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+cryptography==41.0.7

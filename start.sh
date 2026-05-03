@@ -9,6 +9,22 @@ readonly VENV_DIR=".venv"
 readonly PYYAML_VERSION="6.0.1"
 readonly PYYAML_URL="https://files.pythonhosted.org/packages/source/P/PyYAML/PyYAML-${PYYAML_VERSION}.tar.gz"
 readonly PYYAML_HASH="d584d9ec91ad65861573340e50516557a72c3c6877d8c85bdc9651b3ec21f0a9"
+validate_kernel_version() {
+    local version="$1"
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
+        log_error "Invalid kernel version format: $version"
+        return 1
+    fi
+    return 0
+}
+validate_string() {
+    local str="$1"
+    if [[ "$str" =~ [\;\&\|\$\(] ]]; then
+        log_error "String contains suspicious characters: $str"
+        return 1
+    fi
+    return 0
+}
 log_info() { echo -e "${BLUE}[*]${NC} $1"; }
 log_success() { echo -e "${GREEN}[+]${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
@@ -95,9 +111,12 @@ setup_ebpf() {
     [[ $EUID -ne 0 ]] && { log_info "Run with sudo for eBPF support"; return 0; }
     if [[ -f /etc/os-release ]]; then
         source /etc/os-release
+        validate_string "$ID" || { log_error "Invalid OS identifier"; return 1; }
+        KERNEL_VERSION=$(uname -r)
+        validate_kernel_version "$KERNEL_VERSION" || { log_error "Invalid kernel version: $KERNEL_VERSION"; return 1; }
         case "$ID" in
             ubuntu|debian)
-                apt-get update -qq 2>/dev/null && apt-get install -y bpf-tools libbpf-dev linux-headers-$(uname -r) python3-dev iptables 2>&1 | grep -v "^Get:" || true
+                apt-get update -qq 2>/dev/null && apt-get install -y bpf-tools libbpf-dev "linux-headers-${KERNEL_VERSION}" python3-dev iptables 2>&1 | grep -v "^Get:" || true
                 ;;
             fedora|rhel|centos)
                 dnf install -y bcc-tools libbpf-devel kernel-devel python3-devel iptables 2>&1 | grep -v "^" || true

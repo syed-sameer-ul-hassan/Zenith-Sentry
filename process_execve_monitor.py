@@ -8,9 +8,13 @@ import sys
 import json
 import time
 import os
+import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from zenith.utils.validation import validate_ebpf_source, validate_ip_address
+from zenith.utils.signals import register_signal_handler, SignalMask
 try:
     BPF = __import__('bcc').BPF
     HAS_BCC = True
@@ -43,7 +47,13 @@ class ConnectEvent(ctypes.Structure):
         ("dport",      ctypes.c_uint16),
         ("event_type", ctypes.c_uint8),
     ]
-_blocked_ips: Set[str] = set()                                  
+_blocked_ips: Set[str] = set()
+                                            
+IP_WHITELIST = {
+    '127.0.0.1',             
+    '0.0.0.0',                     
+    '::1',                         
+}
 def mitigate(pid: int, ip: Optional[str] = None, reason: str = "") -> None:
     tag = "[SAFE MODE]" if SAFE_MODE else "[MITIGATION]"
     print(f"\n{tag} THREAT DETECTED — {reason}")
@@ -64,16 +74,32 @@ def mitigate(pid: int, ip: Optional[str] = None, reason: str = "") -> None:
     except OSError as e:
         print(f"[MITIGATION] Kill failed: {e}")
     if ip and ip not in _blocked_ips:
+                                             
+        is_valid, error = validate_ip_address(ip)
+        if not is_valid:
+            print(f"[MITIGATION] IP validation failed: {error}")
+            print(f"[MITIGATION] Skipping iptables block for invalid IP")
+            return
+        
+        if ip in IP_WHITELIST:
+            print(f"[MITIGATION] IP {ip} is whitelisted - skipping block")
+            return
+        
         print(f"[MITIGATION] Blocking {ip} via iptables...")
-        result = subprocess.run(
-            ["iptables", "-A", "OUTPUT", "-d", ip, "-j", "DROP"],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            _blocked_ips.add(ip)
-            print(f"[MITIGATION] {ip} blocked successfully.")
-        else:
-            print(f"[MITIGATION] iptables failed: {result.stderr.strip()}")
+                                                        
+        try:
+            result = subprocess.run(
+                ["iptables", "-A", "OUTPUT", "-d", ip, "-j", "DROP"],
+                capture_output=True, text=True,
+                check=False                                          
+            )
+            if result.returncode == 0:
+                _blocked_ips.add(ip)
+                print(f"[MITIGATION] {ip} blocked successfully.")
+            else:
+                print(f"[MITIGATION] iptables failed: {result.stderr.strip()}")
+        except subprocess.SubprocessError as e:
+            print(f"[MITIGATION] iptables command error: {e}")
     print()
 class ProcessExecutionMonitor:
     EVENT_EXECVE_ENTER  = 1
@@ -97,10 +123,17 @@ class ProcessExecutionMonitor:
         self._running     = False
         self.captured_events: List[Dict] = []
         self.captured_alerts: List[Dict] = []
-        signal.signal(signal.SIGINT,  self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+                                         
+        register_signal_handler(signal.SIGINT, self._handle_signal)
+        register_signal_handler(signal.SIGTERM, self._handle_signal)
         self._load_ebpf()
     def _load_ebpf(self) -> None:
+                                                  
+        is_valid, error = validate_ebpf_source(self.ebpf_source)
+        if not is_valid:
+            print(f"[ERROR] eBPF source validation failed: {error}")
+            sys.exit(1)
+        
         try:
             with open(self.ebpf_source, 'r') as f:
                 program_text = f.read()

@@ -1,0 +1,28 @@
+[Unit]
+Description=Zenith Sentry Linux EDR Service
+After=network.target
+Documentation=https://github.com/syed-sameer-ul-hassan/Zenith-Sentry
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/zenith-sentry/main.py full-scan --daemon
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zenith-sentry
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/zenith-sentry /var/log/zenith-sentry
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=65536
+MemoryLimit=512M
+CPUQuota=50%
+[Install]
+WantedBy=multi-user.target

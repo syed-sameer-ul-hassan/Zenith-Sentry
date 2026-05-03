@@ -4,6 +4,22 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+validate_kernel_version() {
+    local version="$1"
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
+        echo -e "${RED}[!] Invalid kernel version format: $version${NC}"
+        return 1
+    fi
+    return 0
+}
+validate_string() {
+    local str="$1"
+    if [[ "$str" =~ [\;\&\|\$\(] ]]; then
+        echo -e "${RED}[!] String contains suspicious characters: $str${NC}"
+        return 1
+    fi
+    return 0
+}
 echo -e "${YELLOW}[*] Zenith-Sentry eBPF Dependencies Installer${NC}"
 echo -e "${YELLOW}[*] This script requires root privileges${NC}\n"
 if [[ $EUID -ne 0 ]]; then
@@ -13,6 +29,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 if [ -f /etc/os-release ]; then
     . /etc/os-release
+    validate_string "$ID" || { echo -e "${RED}[!] Invalid OS identifier${NC}"; exit 1; }
     OS=$ID
     VERSION=$VERSION_ID
 else
@@ -20,12 +37,14 @@ else
     exit 1
 fi
 echo -e "${GREEN}[+] Detected OS: $OS $VERSION${NC}\n"
+KERNEL_VERSION=$(uname -r)
+validate_kernel_version "$KERNEL_VERSION" || { echo -e "${RED}[!] Invalid kernel version: $KERNEL_VERSION${NC}"; exit 1; }
 if [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
     echo -e "${YELLOW}[*] Installing on Debian/Ubuntu...${NC}"
     echo -e "${YELLOW}[*] Updating package manager...${NC}"
     apt update && apt upgrade -y
     echo -e "${YELLOW}[*] Installing BCC toolkit...${NC}"
-    apt install -y bpf-tools libbpf-dev linux-headers-$(uname -r)
+    apt install -y bpf-tools libbpf-dev "linux-headers-${KERNEL_VERSION}"
     echo -e "${YELLOW}[*] Installing Python development dependencies and mitigation tools...${NC}"
     apt install -y python3-dev python3-pip iptables
     echo -e "${YELLOW}[*] Installing BCC Python bindings...${NC}"
@@ -46,24 +65,24 @@ else
     exit 1
 fi
 echo -e "\n${YELLOW}[*] Verifying kernel eBPF support...${NC}"
-if grep -q "CONFIG_BPF=y" /boot/config-$(uname -r); then
+if grep -q "CONFIG_BPF=y" "/boot/config-${KERNEL_VERSION}"; then
     echo -e "${GREEN}[+] CONFIG_BPF=y (eBPF enabled)${NC}"
 else
     echo -e "${RED}[!] CONFIG_BPF not enabled in kernel${NC}"
     exit 1
 fi
-if grep -q "CONFIG_BPF_SYSCALL=y" /boot/config-$(uname -r); then
+if grep -q "CONFIG_BPF_SYSCALL=y" "/boot/config-${KERNEL_VERSION}"; then
     echo -e "${GREEN}[+] CONFIG_BPF_SYSCALL=y (BPF syscall enabled)${NC}"
 else
     echo -e "${RED}[!] CONFIG_BPF_SYSCALL not enabled in kernel${NC}"
     exit 1
 fi
-if grep -q "CONFIG_BPF_JIT=y" /boot/config-$(uname -r); then
+if grep -q "CONFIG_BPF_JIT=y" "/boot/config-${KERNEL_VERSION}"; then
     echo -e "${GREEN}[+] CONFIG_BPF_JIT=y (eBPF JIT enabled)${NC}"
 else
     echo -e "${YELLOW}[!] CONFIG_BPF_JIT not enabled (performance will be lower)${NC}"
 fi
-if grep -q "CONFIG_KPROBES=y" /boot/config-$(uname -r); then
+if grep -q "CONFIG_KPROBES=y" "/boot/config-${KERNEL_VERSION}"; then
     echo -e "${GREEN}[+] CONFIG_KPROBES=y (kprobes enabled)${NC}"
 else
     echo -e "${RED}[!] CONFIG_KPROBES not enabled in kernel${NC}"
