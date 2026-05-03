@@ -2,16 +2,13 @@
   <img src="assets/logo.svg" alt="Zenith-Sentry Logo" width="600"/>
 </p>
 
-<h1 align="center">Zenith-Sentry 2.0</h1>
+<h1 align="center">Zenith-Sentry 2.1.0.0</h1>
 
-<<<<<<< HEAD
 <p align="center">
   <i>A production-grade Endpoint Detection &amp; Response (EDR) toolkit for Linux</i>
   <br/>
   <i>Kernel-level telemetry, behavioural analysis, and automated mitigation.</i>
 </p>
-=======
->>>>>>> b22dda58f3a06e9c6f80ba15ed4d7e8c03c9058b
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python" alt="Python"/>

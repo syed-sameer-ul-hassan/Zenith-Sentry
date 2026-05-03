@@ -144,14 +144,14 @@ token = jwt.encode(
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     Network Layer                        │
-│  Firewall, TLS, Network Segmentation, DDoS Protection  │
+│                     Network Layer                       │
+│  Firewall, TLS, Network Segmentation, DDoS Protection   │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
-│                  Application Layer                       │
-│  Authentication, Authorization, Rate Limiting, Input   │
-│  Validation, Secure Headers, CSRF Protection           │
+│                  Application Layer                      │
+│  Authentication, Authorization, Rate Limiting, Input    │
+│  Validation, Secure Headers, CSRF Protection            │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
