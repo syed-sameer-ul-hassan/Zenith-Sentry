@@ -13,7 +13,12 @@ import os
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET_KEY = os.getenv("ZENITH_JWT_SECRET", "change-this-in-production")
+def get_jwt_secret_key():
+    secret = os.getenv("ZENITH_JWT_SECRET")
+    if not secret:
+        raise ValueError("ZENITH_JWT_SECRET environment variable must be set")
+    return secret
+
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -40,7 +45,7 @@ def create_jwt_token(data: dict, expires_delta: Optional[timedelta] = None) -> s
     to_encode = data.copy()
     to_encode.update({"exp": expire})
     
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, get_jwt_secret_key(), algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
 def decode_jwt_token(token: str) -> dict:
@@ -57,7 +62,7 @@ def decode_jwt_token(token: str) -> dict:
         HTTPException if token is invalid
     """
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, get_jwt_secret_key(), algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
