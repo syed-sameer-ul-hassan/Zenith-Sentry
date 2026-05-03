@@ -1,0 +1,29 @@
+# Trufflehog ignore file
+# Ignore common false positives
+
+# Ignore test files
+tests/
+*.test.py
+test_*.py
+
+# Ignore documentation files
+*.md
+docs/
+
+# Ignore configuration examples
+config.yaml.example
+*.example
+
+# Ignore build artifacts
+dist/
+build/
+*.egg-info/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore git files
+.git/
+.gitignore
