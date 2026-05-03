@@ -102,7 +102,7 @@ class TestSystemCollector:
         """Test SystemCollector can be initialized."""
         from zenith.collectors import SystemCollector
         
-        collector = SystemCollector()
+        collector = SystemCollector(scan_dirs=[])
         assert collector is not None
     
     @patch('zenith.collectors.os.walk')
@@ -114,7 +114,7 @@ class TestSystemCollector:
             ("/etc/systemd/system", [], ["test.service"]),
         ]
         
-        collector = SystemCollector()
+        collector = SystemCollector(scan_dirs=[])
         result = collector.collect()
         
         assert isinstance(result, dict)
@@ -126,7 +126,7 @@ class TestSystemCollector:
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")
         
-        collector = SystemCollector()
+        collector = SystemCollector(scan_dirs=[])
         info = collector._get_file_info(str(test_file))
         
         assert "size" in info
