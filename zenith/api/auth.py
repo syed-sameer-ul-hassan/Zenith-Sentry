@@ -9,10 +9,11 @@ from typing import Optional
 import jwt
 import logging
 from datetime import datetime, timedelta
+import os
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET_KEY = "your-secret-key-change-in-production"                           
+JWT_SECRET_KEY = os.getenv("ZENITH_JWT_SECRET", "change-this-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
