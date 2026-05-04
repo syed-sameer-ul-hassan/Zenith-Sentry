@@ -668,7 +668,7 @@ token = jwt.encode(
 If you discover a security vulnerability in Zenith-Sentry:
 
 1. **Do not disclose publicly**
-2. **Submit Bug Report on : bugzenith.orildo.sbs**
+2. **Submit Bug Report on : [bug Zenith Sentry](https://bugzenith.orldo.sbs)**
 3. **Email: zenith-sentry@orildo.sbs**
 4. **Include details**:
    - Vulnerability description
@@ -688,7 +688,7 @@ If you discover a security vulnerability in Zenith-Sentry:
 ## Support
 
 - **Documentation**: See [docs/](docs/) directory
-- **Bug Reporting**: Report bugs at [bug Zenith Sentry](https://bug-zenith-sentry.orldo.sbs)
+- **Bug Reporting**: Report bugs at [bug Zenith Sentry](https://bugzenith.orldo.sbs)
 - **Security**: Report security vulnerabilities to [Email](mailto:zenith-sentry@orildo.sbs)
 
 **Note**: Please do not create GitHub issues for bug reports. Use the bug reporting site above.
