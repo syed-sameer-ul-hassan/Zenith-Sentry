@@ -25,7 +25,7 @@ jobs:
         bandit -r zenith/ -f json -o bandit-report.json || true
         bandit -r zenith/ -f html -o bandit-report.html || true
     - name: Upload Bandit report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: bandit-report
         path: |
@@ -51,7 +51,7 @@ jobs:
         safety check --json --output safety-report.json || true
         safety check --full-report || true
     - name: Upload Safety report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: safety-report
         path: safety-report.json
