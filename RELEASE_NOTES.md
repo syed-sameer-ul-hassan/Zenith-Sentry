@@ -1,0 +1,147 @@
+# Zenith-Sentry Release Notes
+
+## v2.1 — Security Hardening & Documentation Overhaul
+
+**Release Date:** 2026-06-02
+
+---
+
+## Overview
+
+This release delivers a comprehensive security hardening pass, removes incompatible web components, and completely overhauls all project documentation with modern Mermaid diagrams. Every zero-day and known vulnerability has been permanently fixed — no temporary workarounds.
+
+---
+
+## What's New
+
+### Security Fixes (Permanent)
+
+All vulnerabilities below received **permanent** fixes, not temporary patches.
+
+- **Email Header Injection** (`zenith/monitoring/alerts.py`)
+  - Sanitized email headers and validated email addresses before sending.
+  - Escaped HTML in alert email bodies to prevent XSS in metadata and alert fields.
+
+- **Symlink Traversal** (`zenith/collectors.py`)
+  - Added `followlinks=False` to `os.walk()` and explicitly skipped symlinks.
+  - Enforced `MAX_SYSTEM_FILES` (10,000) to bound file enumeration.
+  - Validated all `scan_dirs` entries using `validate_filepath()`.
+  - Introduced `ALLOWED_SCAN_DIRS` whitelist.
+
+- **Insecure Config Permissions** (`zenith/config.py`)
+  - `ConfigLoader` now raises `PermissionError` when `require_secure=true` and the config file has insecure permissions.
+
+- **Unbounded eBPF Storage** (`process_execve_monitor.py`)
+  - Implemented bounded storage for `captured_events` and `captured_alerts` via `MAX_CAPTURED_EVENTS`.
+  - Enforced `MAX_BLOCKED_IPS` (1,000) to prevent unbounded `_blocked_ips` growth.
+  - Added `validate_filepath()` for the eBPF source path before compilation.
+
+- **Path Traversal in API** (`zenith/api/models.py`)
+  - Added Pydantic validator for `ScanRequest.target_dirs` ensuring each path passes `validate_filepath()`.
+
+- **Health Check DoS** (`zenith/monitoring/health.py`)
+  - Reduced `psutil.cpu_percent` interval from 1.0s to 0.1s to prevent blocking in health checks.
+
+- **Insecure Directory Permissions** (`zenith/config/paths.py`)
+  - All directories created by `_ensure_directories()` now default to secure permissions (`0o700`).
+
+- **Defense-in-Depth Path Validation** (`zenith/utils.py`)
+  - `safe_read()` now calls `validate_filepath()` before attempting any file read.
+
+---
+
+## Removed
+
+### Web UI (`web/` directory)
+
+The browser-based web dashboard has been **removed** in this release.
+
+**Reason:** The web components (HTML/JS frontend + Python HTTP server) are not architecturally compatible with Zenith-Sentry's core design philosophy:
+- Zenith-Sentry is a **terminal-first**, **kernel-integrated** Linux EDR tool.
+- The web layer introduced unnecessary attack surface, dependency bloat, and maintenance overhead.
+- Security-sensitive operations (eBPF loading, iptables rules, process SIGKILL) should not be exposed through a web interface without extensive hardening that was not yet mature.
+
+**Future:** The web dashboard will be re-introduced in a future release as an **optional, strictly sandboxed** administrative interface with robust RBAC, CSRF protection, and audit logging. Until then, use the TUI (`gui.py`) or REST API (`zenith/api/`) for interactive operation.
+
+Files removed:
+- `start-web.sh`
+- `web/index.html`
+- `web/server.py`
+- `web/static/app.js`
+- `web/static/style.css`
+
+---
+
+## Documentation Overhaul
+
+All documentation has been updated to reflect the current codebase and security posture.
+
+### Mermaid Diagrams — 37 diagrams, 14 chart types
+
+Every ASCII art diagram has been replaced with a Mermaid equivalent. New diagrams added where visual explanation improves clarity.
+
+| Chart Type | Used In | Purpose |
+|------------|---------|---------|
+| `flowchart` | README, architecture, security, troubleshooting, deployment, EBPF | System architecture, data flow, decision trees, threat model |
+| `sequenceDiagram` | README, architecture, security, EBPF | Authentication flow, data pipeline, event lifecycle |
+| `pie` | README, troubleshooting | Risk distribution, issue categories |
+| `gantt` | deployment | Deployment timeline, development roadmap |
+| `gitGraph` | architecture | Version history and branching strategy |
+| `mindmap` | architecture | Module structure overview |
+| `erDiagram` | architecture | Database schema relationships |
+| `stateDiagram-v2` | security | Incident response state machine |
+| `classDiagram` | architecture | Core class relationships |
+| `journey` | architecture, troubleshooting | User and troubleshooter workflows |
+| `requirementDiagram` | security | Security requirements traceability |
+| `quadrantChart` | security | Risk likelihood vs. impact matrix |
+| `timeline` | troubleshooting, EBPF | Security patch history, eBPF kernel evolution |
+| `xychart-beta` | deployment | Resource scaling (CPU vs memory) |
+
+### Files Updated
+
+- `README.md` — 11 diagrams, updated architecture section, removed stale web references
+- `docs/architecture.md` — 9 diagrams, full system architecture, ER schema, class diagram
+- `docs/security.md` — 5 diagrams, threat model, auth sequence, incident response, risk matrix
+- `docs/deployment.md` — 3 diagrams, deployment decision tree, gantt timeline, resource chart
+- `docs/troubleshooting.md` — 4 diagrams, decision tree, issue pie chart, user journey, patch timeline
+- `zenith/ebpf/EBPF_GUIDE.md` — 5 diagrams, event lifecycle, event pipeline, threat heuristics, eBPF evolution
+
+---
+
+## Architecture Changes
+
+- **API Binding:** REST API now binds to `127.0.0.1:8000` by default (was `0.0.0.0`) for security.
+- **CORS:** Disabled by default.
+- **No Web UI:** Removed all browser-facing code; use TUI or API instead.
+- **Bounded Collections:** All in-memory storage now has hard limits to prevent DoS via resource exhaustion.
+
+---
+
+## Upgrade Notes
+
+1. **Web UI users:** Migrate to `gui.py` (TUI) or the REST API. The web dashboard is temporarily unavailable.
+2. **Config permissions:** If your `config.yaml` is world-readable, the tool will now refuse to start. Run:
+   ```bash
+   chmod 600 /etc/zenith-sentry/config.yaml
+   ```
+3. **Scan directories:** Only paths under `ALLOWED_SCAN_DIRS` are permitted. Update `config.yaml` if you scan non-standard locations.
+4. **eBPF block list:** If you previously relied on unbounded IP blocking, note that `_blocked_ips` is now capped at 1,000 entries.
+
+---
+
+## Known Limitations
+
+- Web dashboard is removed and will return in a future hardened release.
+- eBPF features require Linux kernel 5.8+ for optimal performance.
+
+---
+
+## Contributors
+
+- Security audit and hardening
+- Documentation migration to Mermaid
+- Zero-day vulnerability remediation
+
+---
+
+*Full commit history: `git log --oneline 83cacb2`*
