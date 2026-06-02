@@ -41,6 +41,9 @@ htmlcov/
 .env.local
 .env.*.local
 *.env
+.envrc
+.python-version
+pip-selfcheck.json
 config.yaml
 config.yml
 config.json
