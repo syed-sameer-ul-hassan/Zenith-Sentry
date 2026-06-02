@@ -92,7 +92,7 @@ class PathConfig:
             return self.LOG_DIR
     
     def _ensure_directories(self) -> None:
-        """Ensure all required directories exist."""
+        """Ensure all required directories exist with secure permissions."""
         directories = [
             self.data_dir,
             self.log_dir,
@@ -102,9 +102,8 @@ class PathConfig:
         
         for directory in directories:
             try:
-                os.makedirs(directory, exist_ok=True)
+                os.makedirs(directory, exist_ok=True, mode=0o700)
             except (PermissionError, OSError) as e:
-                                            
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Could not create directory {directory}: {e}")

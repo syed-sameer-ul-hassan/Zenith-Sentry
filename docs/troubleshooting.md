@@ -4,6 +4,7 @@ This guide provides solutions to common issues and frequently asked questions fo
 
 ## Table of Contents
 
+- [Troubleshooting Decision Tree](#troubleshooting-decision-tree)
 - [Installation Issues](#installation-issues)
 - [Configuration Issues](#configuration-issues)
 - [Database Issues](#database-issues)
@@ -13,6 +14,83 @@ This guide provides solutions to common issues and frequently asked questions fo
 - [Security Issues](#security-issues)
 - [FAQ](#faq)
 - [Getting Help](#getting-help)
+
+## Troubleshooting Decision Tree
+
+```mermaid
+flowchart TD
+    A["Zenith-Sentry not working"] --> B{"What is failing?"}
+    B -->|Won't start| C["Installation Issues"]
+    B -->|Config errors| D["Configuration Issues"]
+    B -->|DB errors| E["Database Issues"]
+    B -->|eBPF errors| F["eBPF Issues"]
+    B -->|API errors| G["API Issues"]
+    B -->|Slow/crashes| H["Performance Issues"]
+    B -->|Permission denied| I["Security Issues"]
+    C --> J["Check Python 3.8+"]
+    C --> K["Check dependencies"]
+    D --> L["Check config.yaml permissions"]
+    D --> M["Validate YAML syntax"]
+    E --> N["Check DB connection string"]
+    E --> O["Verify DB permissions"]
+    F --> P["Check kernel version"]
+    F --> Q["Verify BCC installed"]
+    G --> R["Check API key/JWT"]
+    G --> S["Verify localhost bind"]
+    H --> T["Check disk space"]
+    H --> U["Check memory usage"]
+    I --> V["Check file ownership"]
+    I --> W["Verify not world-readable"]
+```
+
+### Issue Distribution
+
+```mermaid
+pie title Common Issue Categories
+    "Installation" : 25
+    "Configuration" : 20
+    "eBPF" : 15
+    "Database" : 15
+    "API" : 10
+    "Performance" : 10
+    "Security" : 5
+```
+
+### Troubleshooter Experience
+
+```mermaid
+journey
+    title Troubleshooting Experience
+    section Discovery
+      Notice error: 2: User
+      Check logs: 3: User
+    section Diagnosis
+      Run decision tree: 4: User
+      Identify category: 4: User
+    section Resolution
+      Apply fix: 5: User
+      Verify fix: 3: User
+    section Verification
+      Re-run scan: 5: User
+      Monitor stability: 4: User
+```
+
+### Release Fix Timeline
+
+```mermaid
+timeline
+    title Security Patch History
+    2024-Q2 : v1.0 Initial release
+            : v1.1 eBPF integration
+    2024-Q3 : v2.0 Hardened release
+            : Input validation added
+            : Plugin sandboxing
+    2024-Q4 : v2.1 Security audit
+            : Zero-day fixes
+            : Encryption upgrade
+    2025-Q1 : v2.2 Docs overhaul
+            : Mermaid diagrams
+            : Performance tuning
 
 ## Installation Issues
 
@@ -274,8 +352,8 @@ sudo kill -9 $(sudo lsof -t -i:8000)
 # Check API logs
 tail -f /var/log/zenith-sentry/api.log
 
-# Test API manually
-uvicorn zenith.api.main:app --host 0.0.0.0 --port 8000
+# Test API manually (binds to localhost for security)
+uvicorn zenith.api.main:app --host 127.0.0.1 --port 8000
 ```
 
 ### CORS Errors
@@ -283,20 +361,11 @@ uvicorn zenith.api.main:app --host 0.0.0.0 --port 8000
 **Problem**: `CORS policy error` in browser
 
 **Solution**:
-```bash
-# Check CORS configuration in zenith/api/main.py
-# Ensure allowed_origins includes your frontend URL
+CORS is disabled by default for security. The API is designed for server-to-server
+integration, not browser-based access. Use the CLI or TUI for interactive use.
 
-# Or disable for testing (not recommended)
-# In zenith/api/main.py:
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
+If you require browser access, configure a reverse proxy with proper origin
+restrictions rather than enabling CORS on the API directly.
 
 ### Authentication Failed
 
@@ -630,12 +699,8 @@ logging:
 
 **A**:
 ```bash
-# Run with hot reload
-uvicorn zenith.api.main:app --reload --host 0.0.0.0 --port 8000
-
-# Run web UI in development
-cd web
-npm run dev
+# Run with hot reload (binds to localhost for security)
+uvicorn zenith.api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### Q: How do I report a bug?

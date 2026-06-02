@@ -6,6 +6,11 @@ def safe_read(filepath: str, max_bytes: int = 1048576) -> str:
         if not isinstance(filepath, str):
             logger.warning(f"Invalid filepath type: {type(filepath)}")
             return ""
+        from zenith.utils.validation import validate_filepath
+        is_valid, error = validate_filepath(filepath)
+        if not is_valid:
+            logger.warning(f"Path validation failed for {filepath}: {error}")
+            return ""
         if not os.path.isfile(filepath):
             logger.debug(f"File not found: {filepath}")
             return ""

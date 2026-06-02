@@ -2,7 +2,7 @@
 """
 Scan-related API routes.
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from typing import List
 import uuid
 import logging
@@ -12,8 +12,6 @@ from zenith.api.routes import _shared
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-_scans: dict = _shared.scans
 
 def _run_scan_task(scan_id: str, request: ScanRequest) -> None:
     """Execute a real scan using ZenithEngine collectors + detectors."""
@@ -77,19 +75,19 @@ def _run_scan_task(scan_id: str, request: ScanRequest) -> None:
             "low": sum(1 for f in out_findings if f.risk == RiskLevel.LOW),
         }
 
-        scan = _scans.get(scan_id)
+        scan = _shared.scans.get(scan_id)
         if scan is not None:
             scan.status = "completed"
             scan.end_time = datetime.utcnow()
             scan.findings = out_findings
             scan.summary = summary
 
-        _shared.findings.extend(out_findings)
+        _shared.add_findings(out_findings)
 
         logger.info("Scan %s completed: %d findings, score=%d", scan_id, len(out_findings), score)
     except Exception as exc:
         logger.exception("Scan %s failed: %s", scan_id, exc)
-        scan = _scans.get(scan_id)
+        scan = _shared.scans.get(scan_id)
         if scan is not None:
             scan.status = "failed"
             scan.end_time = datetime.utcnow()
@@ -106,7 +104,7 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks) ->
         findings=[],
         summary={"total": 0, "risk_score": 0},
     )
-    _scans[scan_id] = scan
+    _shared.add_scan(scan_id, scan)
     background_tasks.add_task(_run_scan_task, scan_id, request)
     return scan
 
@@ -121,13 +119,16 @@ async def get_scan(scan_id: str) -> ScanResponse:
     Returns:
         Scan response with status and findings
     """
-    if scan_id not in _scans:
+    if scan_id not in _shared.scans:
         raise HTTPException(status_code=404, detail="Scan not found")
     
-    return _scans[scan_id]
+    return _shared.scans[scan_id]
 
 @router.get("/", response_model=List[ScanResponse], summary="List all scans")
-async def list_scans(limit: int = 50, offset: int = 0) -> List[ScanResponse]:
+async def list_scans(
+    limit: int = Query(50, ge=1, le=1000),
+    offset: int = Query(0, ge=0, le=10000)
+) -> List[ScanResponse]:
     """
     List all scans with pagination.
     
@@ -138,7 +139,7 @@ async def list_scans(limit: int = 50, offset: int = 0) -> List[ScanResponse]:
     Returns:
         List of scan responses
     """
-    scans = list(_scans.values())
+    scans = list(_shared.scans.values())
     scans.sort(key=lambda x: x.start_time, reverse=True)
     return scans[offset:offset+limit]
 
@@ -153,8 +154,8 @@ async def delete_scan(scan_id: str) -> dict:
     Returns:
         Deletion confirmation
     """
-    if scan_id not in _scans:
+    if scan_id not in _shared.scans:
         raise HTTPException(status_code=404, detail="Scan not found")
     
-    del _scans[scan_id]
+    del _shared.scans[scan_id]
     return {"message": f"Scan {scan_id} deleted successfully"}

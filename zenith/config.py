@@ -23,8 +23,10 @@ class ConfigLoader:
         
         if require_secure:
             if not self._check_file_permissions(path):
-                logger.warning(f"Config file has insecure permissions: {path}")
-                                                                
+                raise PermissionError(
+                    f"Config file has insecure permissions and require_secure is True: {path}"
+                )
+        
         self.file_hash = self._calculate_file_hash(path)
         if not self.file_hash:
             logger.warning(f"Could not calculate file hash for integrity check: {path}")

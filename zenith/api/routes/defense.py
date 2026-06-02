@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Defense-related API routes (lockdown, mitigation mode, blocked IPs)."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List
 from datetime import datetime
 import logging
 
 from zenith.api.routes import _shared
+from zenith.api.auth import require_permission, get_current_user
+from zenith.utils.validation import validate_ip_address
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+MAX_BLOCKED_IPS = 1000
+
 @router.get("/status", summary="Get current defense posture")
-async def get_defense_status() -> Dict[str, Any]:
+async def get_defense_status(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Return current defense state (lockdown, mitigation mode, blocked IPs)."""
     return {
         "lockdown_active": _shared.defense_state["lockdown_active"],
@@ -22,7 +28,9 @@ async def get_defense_status() -> Dict[str, Any]:
     }
 
 @router.post("/lockdown", summary="Activate system lockdown")
-async def activate_lockdown() -> Dict[str, Any]:
+async def activate_lockdown(
+    current_user: dict = Depends(require_permission("admin"))
+) -> Dict[str, Any]:
     """
     Activate emergency system lockdown. In production this would invoke
     iptables rules / kill suspicious PIDs. Here we record the state and
@@ -44,7 +52,9 @@ async def activate_lockdown() -> Dict[str, Any]:
     }
 
 @router.post("/lockdown/release", summary="Release system lockdown")
-async def release_lockdown() -> Dict[str, Any]:
+async def release_lockdown(
+    current_user: dict = Depends(require_permission("admin"))
+) -> Dict[str, Any]:
     """Release an active lockdown."""
     if not _shared.defense_state["lockdown_active"]:
         return {"status": "not_active"}
@@ -54,7 +64,10 @@ async def release_lockdown() -> Dict[str, Any]:
     return {"status": "released"}
 
 @router.post("/mitigation/{mode}", summary="Set mitigation mode")
-async def set_mitigation_mode(mode: str) -> Dict[str, Any]:
+async def set_mitigation_mode(
+    mode: str,
+    current_user: dict = Depends(require_permission("admin"))
+) -> Dict[str, Any]:
     """Set mitigation mode: monitor | block | kill."""
     mode = mode.lower().strip()
     if mode not in {"monitor", "block", "kill"}:
@@ -63,15 +76,31 @@ async def set_mitigation_mode(mode: str) -> Dict[str, Any]:
     return {"status": "ok", "mode": mode}
 
 @router.post("/block-ip/{ip}", summary="Add IP to blocklist")
-async def block_ip(ip: str) -> Dict[str, Any]:
+async def block_ip(
+    ip: str,
+    current_user: dict = Depends(require_permission("admin"))
+) -> Dict[str, Any]:
     """Block an IP address (record only; actual iptables rule requires root)."""
+    is_valid, error = validate_ip_address(ip)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Invalid IP address: {error}")
+    
     if ip not in _shared.defense_state["blocked_ips"]:
+        if len(_shared.defense_state["blocked_ips"]) >= MAX_BLOCKED_IPS:
+            raise HTTPException(status_code=400, detail="Blocklist limit reached")
         _shared.defense_state["blocked_ips"].append(ip)
     return {"status": "ok", "blocked_ips": _shared.defense_state["blocked_ips"]}
 
 @router.delete("/block-ip/{ip}", summary="Remove IP from blocklist")
-async def unblock_ip(ip: str) -> Dict[str, Any]:
+async def unblock_ip(
+    ip: str,
+    current_user: dict = Depends(require_permission("admin"))
+) -> Dict[str, Any]:
     """Remove an IP from the blocklist."""
+    is_valid, error = validate_ip_address(ip)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Invalid IP address: {error}")
+    
     if ip in _shared.defense_state["blocked_ips"]:
         _shared.defense_state["blocked_ips"].remove(ip)
     return {"status": "ok", "blocked_ips": _shared.defense_state["blocked_ips"]}

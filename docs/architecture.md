@@ -27,63 +27,61 @@ Zenith-Sentry is a Linux Endpoint Detection and Response (EDR) tool that provide
 
 ### System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  DATA COLLECTION LAYER                          │
-└─────────────────────────────────────────────────────────────────┘
-  ┌───────────────── ┐      ┌─────────────────┐      ┌─────────────────┐
-  │ Process Collector│────▶ │Network Collector│────▶ │ System Collector│
-  └───────────────── ┘      └─────────────────┘      └─────────────────┘
-                                                               │
-                                                               ▼
-                                                      ┌─────────────────┐
-                                                      │   eBPF Monitor  │
-                                                      └─────────────────┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    DETECTION LAYER                              │
-└─────────────────────────────────────────────────────────────────┘
-  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-  │Process Detector │  │Network Detector │  │System Detector  │
-  └─────────────────┘  └─────────────────┘  └─────────────────┘
-                                                               │
-                                                               ▼
-                                                ┌─────────────────────────┐
-                                                │eBPF Execution Detector  │
-                                                └─────────────────────────┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    RESPONSE LAYER                               │
-└─────────────────────────────────────────────────────────────────┘
-  ┌───────────────── ┐      ┌─────────────────┐      ┌────────────────  ─┐
-  │Mitigation Engine │────▶ │   IP Blocking   │────▶ │Process Termination│
-  └───────────────── ┘      └─────────────────┘      └────────────────  ─┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    STORAGE LAYER                                │
-└─────────────────────────────────────────────────────────────────┘
-  ┌───────────────── ┐  ┌─────────────────┐  ┌─────────────────┐
-  │SQLite/PostgreSQL │  │   Event Logs    │  │   Audit Logs    │
-  └───────────────── ┘  └─────────────────┘  └─────────────────┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      API LAYER                                  │
-└─────────────────────────────────────────────────────────────────┘
-  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-  │  FastAPI Server │────▶│ REST Endpoints  │────▶│   WebSocket     │
-  └─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  PRESENTATION LAYER                             │
-└─────────────────────────────────────────────────────────────────┘
-  ┌─────────────────┐      ┌─────────────────┐
-  │     Web UI      │      │  CLI Interface  │
-  └─────────────────┘      └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph DC["DATA COLLECTION LAYER"]
+        PC["Process Collector"]
+        NC["Network Collector"]
+        SC["System Collector"]
+        EM["eBPF Monitor"]
+    end
+
+    subgraph DL["DETECTION LAYER"]
+        PD["Process Detector"]
+        ND["Network Detector"]
+        SD["System Detector"]
+        ED["eBPF Execution Detector"]
+    end
+
+    subgraph RL["RESPONSE LAYER"]
+        ME["Mitigation Engine"]
+        IB["IP Blocking"]
+        PT["Process Termination"]
+    end
+
+    subgraph SL["STORAGE LAYER"]
+        DB["SQLite / PostgreSQL"]
+        EL["Event Logs"]
+        AL["Audit Logs"]
+    end
+
+    subgraph AL2["API LAYER"]
+        FS["FastAPI Server"]
+        RE["REST Endpoints"]
+    end
+
+    subgraph PL["PRESENTATION LAYER"]
+        CLI["CLI Interface"]
+        TUI["TUI Interface"]
+    end
+
+    PC --> PD
+    NC --> ND
+    SC --> SD
+    EM --> ED
+    PD --> ME
+    ND --> ME
+    SD --> ME
+    ED --> ME
+    ME --> IB
+    ME --> PT
+    ME --> DB
+    ME --> EL
+    ME --> AL
+    RE --> CLI
+    RE --> TUI
+    FS --> RE
+    DB --> RE
 ```
 
 ## Component Architecture
@@ -97,135 +95,147 @@ Zenith-Sentry is a Linux Endpoint Detection and Response (EDR) tool that provide
 
 ### Data Flow
 
-```
-┌─────────┐     ┌─────────┐     ┌─────────┐     ┌──────────┐     ┌──────────┐
-│  User   │────▶│   CLI   │────▶│ Engine  │────▶│Collector │────▶│Telemetry │
-└─────────┘     └─────────┘     └─────────┘     └──────────┘     └──────────┘
-                                              │
-                                              ▼
-                                      ┌──────────────────┐
-                                      │    Detectors     │
-                                      └────────┬─────────┘
-                                               │
-                                               ▼
-                                      ┌──────────────────┐
-                                      │     Findings     │
-                                      └────────┬─────────┘
-                                               │
-                                               ▼
-                                      ┌──────────────────┐
-                                      │    Database      │────▶ Storage
-                                      └────────┬─────────┘
-                                               │
-                                               ▼
-                                      ┌──────────────────┐
-                                      │      API         │◀──── User
-                                      └──────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant CLI as CLI
+    participant E as ZenithEngine
+    participant C as Collectors
+    participant D as Detectors
+    participant S as ScoringEngine
+    participant DB as Database
+    participant API as REST API
+
+    U->>CLI: Execute scan command
+    CLI->>E: Start scan
+    E->>C: Collect telemetry
+    C-->>E: Return processes, network, files
+    E->>D: Inject telemetry
+    D-->>E: Return findings
+    E->>S: Score findings
+    S-->>E: Risk score
+    E->>DB: Persist findings
+    E-->>CLI: JSON report / TUI alert
+    U->>API: Query findings
+    API->>DB: Fetch data
+    DB-->>API: Return findings
+    API-->>U: API response
 ```
 
 ### Module Structure
 
-```
-zenith/
-├── api/                 # REST API layer
-│   ├── main.py         # FastAPI application
-│   ├── auth.py         # Authentication (JWT, API keys)
-│   ├── models.py       # Pydantic models
-│   └── routes/         # API endpoints
-├── cli/                 # Command-line interface
-│   └── main.py         # CLI commands
-├── config/              # Configuration management
-│   └── paths.py        # Path management (FHS/XDG)
-├── db/                  # Database layer
-│   ├── base.py         # SQLAlchemy setup
-│   ├── models.py       # ORM models
-│   ├── repository.py   # Query interface
-│   └── retention.py    # Data retention
-├── ebpf/                # eBPF kernel monitoring
-│   ├── execve_monitor.c # eBPF C program
-│   └── EBPF_GUIDE.md   # eBPF implementation guide
-├── monitoring/          # Monitoring & metrics
-│   ├── metrics.py      # Prometheus metrics
-│   ├── health.py       # Health checks
-│   └── alerts.py       # Email alerting
-├── plugins/             # Plugin system
-│   ├── base.py         # Plugin base classes
-│   ├── detectors.py    # Built-in detectors
-│   └── ebpf_detector.py # eBPF event processor
-├── scripts/             # Utility scripts
-│   ├── backup.py       # Database backup
-│   ├── restore.py      # Database restore
-│   └── verify_install.py # Installation verification
-├── security/            # Security utilities
-│   ├── encryption.py   # Encryption utilities
-│   └── event_logger.py # Security event logging
-├── utils/               # Utility functions
-│   ├── validation.py   # Input validation
-│   ├── logging.py      # Logging utilities
-│   └── signals.py      # Signal handling
-├── collectors.py        # Telemetry collectors
-├── config.py           # Configuration loader
-├── core.py             # Core interfaces (IDetector)
-├── engine.py           # Main orchestration engine
-├── registry.py         # Plugin discovery & loading
-└── utils.py            # Shared utilities
+```mermaid
+mindmap
+  root((zenith))
+    api
+      main.py[FastAPI App]
+      auth.py[JWT/API Keys]
+      models.py[Pydantic Models]
+      routes[API Endpoints]
+    cli
+      main.py[CLI Commands]
+    config
+      paths.py[FHS/XDG Paths]
+      config.py[Config Loader]
+    db
+      base.py[SQLAlchemy]
+      models.py[ORM Models]
+      repository.py[Queries]
+      retention.py[Data Cleanup]
+    ebpf
+      execve_monitor.c[eBPF C Program]
+      EBPF_GUIDE.md[eBPF Guide]
+    monitoring
+      metrics.py[Prometheus]
+      health.py[Health Checks]
+      alerts.py[Email Alerts]
+    plugins
+      base.py[Plugin Base]
+      detectors.py[Built-in]
+      ebpf_detector.py[eBPF Events]
+    scripts
+      backup.py[DB Backup]
+      restore.py[DB Restore]
+      verify_install.py[Verify]
+    security
+      encryption.py[AES/PBKDF2]
+      event_logger.py[Events]
+    utils
+      validation.py[Input Val]
+      logging.py[Log Sanitize]
+      signals.py[Signal Handlers]
+    collectors.py[Telemetry]
+    engine.py[Orchestrator]
+    registry.py[Plugin Loader]
+    utils.py[Shared Utils]
 ```
 
 ### Database Schema
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          ORGANIZATION                               │
-└─────────────────────────────────────────────────────────────────────┘
-  ┌─────────────────────────────────────────────────────────────┐
-  │ uuid PK  name  slug  created_at                             │
-  └─────────────────────────────────────────────────────────────┘
-                                                               │
-                                                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                               USER                                  │
-└─────────────────────────────────────────────────────────────────────┘
-  ┌─────────────────────────────────────────────────────────────┐
-  │ uuid PK  username  email  role  created_at                  │
-  └─────────────────────────────────────────────────────────────┘
-           │                                    │
-           ▼                                    ▼
-  ┌─────────────────────┐          ┌─────────────────────┐
-  │       SCAN          │          │      API_KEY        │
-  ├─────────────────────┤          ├─────────────────────┤
-  │ uuid PK             │          │ uuid PK             │
-  │ user_id FK          │          │ user_id FK          │
-  │ scan_type           │          │ key_hash            │
-  │ status              │          │ name                │
-  │ started_at          │          │ created_at          │
-  │ completed_at        │          │ expires_at          │
-  └─────────────────────┘          └─────────────────────┘
-           │
-           ▼
-  ┌─────────────────────┐
-  │      FINDING        │
-  ├─────────────────────┤
-  │ uuid PK             │
-  │ scan_id FK          │
-  │ risk_level          │
-  │ severity            │
-  │ module              │
-  │ title               │
-  │ description         │
-  │ timestamp           │
-  └─────────────────────┘
-           │
-           ▼
-  ┌─────────────────────┐
-  │   SYSTEM_EVENT      │
-  ├─────────────────────┤
-  │ uuid PK             │
-  │ scan_id FK          │
-  │ event_type          │
-  │ severity            │
-  │ message             │
-  │ timestamp           │
-  └─────────────────────┘
+```mermaid
+erDiagram
+    USER ||--o{ SCAN : performs
+    USER ||--o{ API_KEY : owns
+    SCAN ||--o{ FINDING : contains
+    SCAN ||--o{ SYSTEM_EVENT : generates
+
+    USER {
+        string id PK
+        string username
+        string email
+        string role
+        datetime created_at
+        datetime last_login
+    }
+
+    API_KEY {
+        string id PK
+        string user_id FK
+        string key_hash
+        string name
+        boolean is_active
+        datetime expires_at
+        datetime created_at
+        datetime last_used
+    }
+
+    SCAN {
+        string id PK
+        string user_id FK
+        string scan_type
+        string status
+        datetime start_time
+        datetime end_time
+        boolean ebpf_enabled
+        boolean mitigation_enabled
+        json target_dirs
+        json summary
+    }
+
+    FINDING {
+        string id PK
+        string scan_id FK
+        string module
+        string risk
+        string severity
+        string tactic
+        text description
+        json evidence
+        datetime timestamp
+        boolean resolved
+        datetime resolved_at
+    }
+
+    SYSTEM_EVENT {
+        int id PK
+        string event_type
+        string source
+        text message
+        string severity
+        json metadata
+        datetime timestamp
+    }
 ```
 
 ## Security Architecture
@@ -242,91 +252,77 @@ zenith/
 
 ### Threat Model
 
-```
-┌─────────┐     ┌──────────────┐      ┌──────────────────┐
-│Attacker │────▶│ Vulnerability│────▶ │ Detection Layer  │
-└─────────┘     └──────────────┘      └──────────────────┘
-                                           │
-                          ┌────────────────┴────────────────┐
-                          │                                 │
-                          ▼                                 ▼
-                   ┌──────────────┐                 ┌──────────────┐
-                   │Security Team │                 │Mitigation    │
-                   └──────────────┘                 │ Engine       │
-                                                    └──────────────┘
-                                                          │
-                                          ┌───────────────┴───────────────┐
-                                          │                               │
-                                          ▼                               ▼
-                                   ┌──────────────┐              ┌──────────────┐
-                                   │   Block      │              │     Log      │
-                                   │   Threat     │              │ Audit Trail  │
-                                   └──────────────┘              └──────────────┘
-                                                                         │
-                                                                         ▼
-                                                                   ┌──────────────┐
-                                                                   │ Compliance   │
-                                                                   └──────────────┘
+```mermaid
+flowchart LR
+    A["Attacker"]
+    V["Vulnerability"]
+    DL["Detection Layer"]
+    ST["Security Team"]
+    ME["Mitigation Engine"]
+    BT["Block Threat"]
+    LA["Log Audit Trail"]
+    CP["Compliance"]
+
+    A --> V
+    V --> DL
+    DL --> ST
+    DL --> ME
+    ME --> BT
+    ME --> LA
+    LA --> CP
 ```
 
 ## Deployment Architecture
 
 ### Single-Node Deployment
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Linux Host                               │
-└─────────────────────────────────────────────────────────────────┘
-  ┌─────────────────────────────────────────────────────────────┐
-  │              Zenith-Sentry Core                             │
-  └─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │                  SQLite Database                            │
-  └─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │                    Log Files                                │
-  └─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │                   Configuration                             │
-  └─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Host["Linux Host"]
+        ZC["Zenith-Sentry Core"]
+        DB["SQLite Database"]
+        LF["Log Files"]
+        CFG["Configuration"]
+    end
+
+    ZC --> DB
+    ZC --> LF
+    ZC --> CFG
 ```
 
 ### Distributed Deployment
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Load Balancer                                │
-│                     Nginx/HAProxy                               │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-          ┌──────────────────┼──────────────────┐
-          │                  │                  │
-          ▼                  ▼                  ▼
-  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-  │ API Server 1  │  │ API Server 2  │  │ API Server 3  │
-  └───────────────┘  └───────────────┘  └───────────────┘
-          │                  │                  │
-          └──────────────────┼──────────────────┘
-                             ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │              PostgreSQL Primary                             │
-  └─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │              PostgreSQL Replica                             │
-  └─────────────────────────────────────────────────────────────┘
-          │                  │
-          ▼                  ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │  Prometheus  ───────▶  Grafana                              │
-  └─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    LB["Load Balancer (Nginx/HAProxy)"]
+
+    subgraph AppTier["Application Tier"]
+        A1["API Server 1"]
+        A2["API Server 2"]
+        A3["API Server 3"]
+    end
+
+    subgraph DataTier["Data Tier"]
+        PP["PostgreSQL Primary"]
+        PR["PostgreSQL Replica"]
+    end
+
+    subgraph MonitorTier["Monitoring Tier"]
+        PM["Prometheus"]
+        GF["Grafana"]
+    end
+
+    LB --> A1
+    LB --> A2
+    LB --> A3
+    A1 --> PP
+    A2 --> PP
+    A3 --> PP
+    PP --> PR
+    PM --> A1
+    PM --> A2
+    PM --> A3
+    PM --> GF
 ```
 
 ## Performance Considerations
@@ -336,3 +332,70 @@ zenith/
 - **Connection Pooling**: SQLAlchemy connection pooling for database efficiency
 - **Async Processing**: FastAPI async support for concurrent requests
 - **Data Retention**: Automatic cleanup of old data to prevent database bloat
+
+## Class Diagram
+
+```mermaid
+classDiagram
+    class ZenithEngine {
+        +ConfigLoader config
+        +PluginRegistry registry
+        +start_ebpf_monitor()
+        +stop_ebpf_monitor()
+        +run_scan()
+        -_collect_telemetry()
+        -_print_human_readable()
+    }
+    class PluginRegistry {
+        +load_plugins()
+        +instantiate(**kwargs)
+        -_load_plugin_file()
+        -_scan_plugins()
+    }
+    class ProcessCollector {
+        +collect() dict
+    }
+    class NetworkCollector {
+        +collect() list
+    }
+    class SystemCollector {
+        +scan_dirs list
+        +collect() dict
+    }
+    class ProcessExecutionMonitor {
+        +ebpf_source str
+        +safe_mode bool
+        +run()
+        -_load_ebpf()
+        -_handle_execve_event()
+        -_handle_connect_event()
+    }
+    ZenithEngine --> PluginRegistry : uses
+    ZenithEngine --> ProcessCollector : collects
+    ZenithEngine --> NetworkCollector : collects
+    ZenithEngine --> SystemCollector : collects
+    ZenithEngine --> ProcessExecutionMonitor : monitors
+```
+
+## User Journey
+
+```mermaid
+journey
+    title Operator Workflow with Zenith-Sentry
+    section Installation
+      Run install.sh: 5: Operator
+      Verify deps: 4: Operator
+    section Scanning
+      Start scan: 5: Operator
+      Wait for results: 3: Operator
+    section Analysis
+      Review findings: 4: Analyst
+      Score risks: 4: Analyst
+    section Response
+      Trigger mitigation: 5: SOC
+      Block IPs: 5: SOC
+      Kill processes: 4: SOC
+    section Reporting
+      Export JSON: 4: Analyst
+      Archive logs: 3: Analyst
+```

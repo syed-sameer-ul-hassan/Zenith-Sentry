@@ -34,6 +34,29 @@ This guide covers deploying Zenith-Sentry in various environments, including Doc
 
 ## Installation
 
+### Deployment Decision Tree
+
+Choose the right installation method for your environment:
+
+```mermaid
+flowchart TD
+    A["Start: Deploy Zenith-Sentry"] --> B{"Need eBPF monitoring?"}
+    B -->|Yes| C["Run install_ebpf_deps.sh"]
+    B -->|No| D{"Production environment?"}
+    C --> D
+    D -->|Yes| E["Use PostgreSQL + Docker/K8s"]
+    D -->|No| F["Use SQLite + Local install"]
+    E --> G{"Need high availability?"}
+    G -->|Yes| H["Kubernetes + Load Balancer"]
+    G -->|No| I["Single Docker Container"]
+    F --> J["pip install -r requirements.txt"]
+    H --> K["Configure Zenith-Sentry"]
+    I --> K
+    J --> K
+    K --> L["Verify: python zenith/scripts/verify_install.py"]
+    L --> M["Done"]
+```
+
 ### From Source
 
 ```bash
@@ -401,8 +424,8 @@ export DATABASE_URL="postgresql://zenith:password@localhost:5432/zenith"
 # Encryption key (required)
 export ZENITH_ENCRYPTION_KEY="your-encryption-key-here"
 
-# API configuration
-export API_HOST="0.0.0.0"
+# API configuration (binds to localhost for security)
+export API_HOST="127.0.0.1"
 export API_PORT="8000"
 
 # Log level
@@ -514,14 +537,8 @@ scrape_configs:
 ### Health Checks
 
 ```bash
-# Liveness check
-curl http://localhost:8000/health/live
-
-# Readiness check
-curl http://localhost:8000/health/ready
-
-# Full health check
-curl http://localhost:8000/health
+# Health check (requires authentication)
+curl -H "Authorization: Bearer $ZENITH_API_KEY" http://localhost:8000/health
 ```
 
 ### Log Monitoring
@@ -612,14 +629,28 @@ python zenith/scripts/restore.py --input /backup/zenith-backup-20240101.db
 
 ## Security Considerations
 
-1. **Run as non-root user**
+1. **API Authentication Required**
+   All API endpoints require JWT or API key authentication. No anonymous access.
+
+2. **No CORS Enabled**
+   CORS is disabled by default. Use a reverse proxy for browser access if needed.
+
+3. **No Web UI**
+   The web UI component has been removed. Use the CLI (`main.py`) or TUI (`gui.py`) for interactive use.
+
+4. **Secure Defaults**
+   - API documentation (`/docs`, `/redoc`) is disabled in production
+   - Auto-generated encryption keys are rejected; explicit key configuration required
+   - Config files with world-readable permissions are rejected
+
+5. **Run as non-root user**
    ```bash
    sudo useradd -r -s /bin/false zenith-sentry
    sudo chown -R zenith-sentry:zenith-sentry /etc/zenith-sentry/
    sudo chown -R zenith-sentry:zenith-sentry /var/log/zenith-sentry/
    ```
 
-2. **Use TLS in production**
+6. **Use TLS in production**
    ```yaml
    # Configure nginx reverse proxy with TLS
    server {
@@ -652,3 +683,44 @@ python zenith/scripts/restore.py --input /backup/zenith-backup-20240101.db
    # Update Python dependencies
    pip install --upgrade -r requirements.txt
    ```
+
+## Deployment Timeline
+
+```mermaid
+gantt
+    title Zenith-Sentry Production Deployment
+    dateFormat YYYY-MM-DD
+    section Planning
+    Infrastructure audit      :done, plan1, 2024-01-01, 3d
+    Capacity planning         :done, plan2, after plan1, 2d
+    section Setup
+    OS hardening              :active, setup1, after plan2, 3d
+    Dependency install        :setup2, after setup1, 2d
+    eBPF deps (optional)      :setup3, after setup2, 1d
+    section Configuration
+    Config file creation      :config1, after setup3, 1d
+    Secret generation         :config2, after config1, 1d
+    Permission lockdown       :config3, after config2, 1d
+    section Deployment
+    Service install           :deploy1, after config3, 1d
+    Database init             :deploy2, after deploy1, 1d
+    Health check verify       :deploy3, after deploy2, 1d
+    section Go-Live
+    Monitoring enable         :live1, after deploy3, 1d
+    Alert rules config        :live2, after live1, 1d
+    Full production scan      :live3, after live2, 2d
+```
+
+## Resource Scaling Chart
+
+```mermaid
+xychart-beta
+    title "CPU vs Memory Scaling"
+    x-axis [1, 2, 4, 8, 16, 32]
+    x-label "Concurrent Scans"
+    y-axis "Resource Usage %"
+    y-label "Percent"
+    line "CPU" [5, 12, 25, 45, 70, 95]
+    line "Memory" [8, 15, 28, 40, 60, 85]
+    bar "Disk I/O" [3, 8, 18, 35, 55, 80]
+```

@@ -8,6 +8,9 @@ from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredenti
 from typing import Optional
 import jwt
 import logging
+import hmac
+import secrets
+import hashlib
 from datetime import datetime, timedelta
 import os
 
@@ -25,6 +28,24 @@ JWT_EXPIRATION_HOURS = 24
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 HTTP_BEARER = HTTPBearer(auto_error=False)
+
+def _get_valid_api_keys() -> set:
+    """Load valid API keys from environment or secure key file."""
+    keys = set()
+    env_key = os.getenv("ZENITH_API_KEY")
+    if env_key:
+        keys.add(env_key.strip())
+    key_file = os.getenv("ZENITH_API_KEY_FILE", "/etc/zenith-sentry/api.key")
+    if os.path.exists(key_file):
+        try:
+            with open(key_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        keys.add(line)
+        except Exception as e:
+            logger.warning(f"Failed to read API key file: {e}")
+    return keys
 
 def create_jwt_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -77,10 +98,8 @@ def decode_jwt_token(token: str) -> dict:
 
 def verify_api_key(api_key: str) -> bool:
     """
-    Verify an API key.
-    
-    In production, this would check against the database.
-    For now, this is a simple placeholder.
+    Verify an API key against configured valid keys.
+    Uses constant-time comparison to prevent timing attacks.
     
     Args:
         api_key: API key to verify
@@ -88,65 +107,62 @@ def verify_api_key(api_key: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-                                           
     if not api_key or len(api_key) < 32:
         return False
-    return True
+    
+    valid_keys = _get_valid_api_keys()
+    if not valid_keys:
+        logger.error("No API keys configured. Set ZENITH_API_KEY or create key file.")
+        return False
+    
+    for valid_key in valid_keys:
+        if hmac.compare_digest(api_key, valid_key):
+            return True
+    return False
 
 async def get_current_user_jwt(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTP_BEARER)
-) -> dict:
+) -> Optional[dict]:
     """
     Get the current user from JWT token.
+    Returns None instead of raising so fallback auth can work.
     
     Args:
         credentials: HTTP Bearer credentials
         
     Returns:
-        User data from token
-        
-    Raises:
-        HTTPException if credentials are invalid
+        User data from token, or None if not provided/invalid
     """
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return None
     
-    token = credentials.credentials
-    payload = decode_jwt_token(token)
-    
-    return payload
+    try:
+        token = credentials.credentials
+        payload = decode_jwt_token(token)
+        return payload
+    except HTTPException:
+        return None
+    except Exception:
+        return None
 
 async def get_current_user_api_key(
     api_key: Optional[str] = Depends(API_KEY_HEADER)
-) -> str:
+) -> Optional[str]:
     """
     Get the current user from API key.
+    Returns None instead of raising so fallback auth can work.
     
     Args:
         api_key: API key from header
         
     Returns:
-        API key
-        
-    Raises:
-        HTTPException if API key is invalid
+        API key if valid, or None if not provided/invalid
     """
     if api_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required",
-            headers={"X-API-Key": "Required"},
-        )
+        return None
     
     if not verify_api_key(api_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
-        )
+        return None
     
     return api_key
 
@@ -175,7 +191,8 @@ async def get_current_user(
     
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required"
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
 ROLES = {

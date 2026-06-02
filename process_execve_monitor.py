@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from zenith.utils.validation import validate_ebpf_source, validate_ip_address
+from zenith.utils.validation import validate_ebpf_source, validate_ip_address, validate_filepath
 from zenith.utils.signals import register_signal_handler, SignalMask
 try:
     BPF = __import__('bcc').BPF
@@ -48,11 +48,13 @@ class ConnectEvent(ctypes.Structure):
         ("event_type", ctypes.c_uint8),
     ]
 _blocked_ips: Set[str] = set()
+MAX_BLOCKED_IPS = 1000
+MAX_CAPTURED_EVENTS = 10000
                                             
 IP_WHITELIST = {
-    '127.0.0.1',             
-    '0.0.0.0',                     
-    '::1',                         
+    '127.0.0.1',
+    '0.0.0.0',
+    '::1',
 }
 def mitigate(pid: int, ip: Optional[str] = None, reason: str = "") -> None:
     tag = "[SAFE MODE]" if SAFE_MODE else "[MITIGATION]"
@@ -74,7 +76,10 @@ def mitigate(pid: int, ip: Optional[str] = None, reason: str = "") -> None:
     except OSError as e:
         print(f"[MITIGATION] Kill failed: {e}")
     if ip and ip not in _blocked_ips:
-                                             
+        if len(_blocked_ips) >= MAX_BLOCKED_IPS:
+            print(f"[MITIGATION] Blocked IP limit reached ({MAX_BLOCKED_IPS}), skipping {ip}")
+            return
+        
         is_valid, error = validate_ip_address(ip)
         if not is_valid:
             print(f"[MITIGATION] IP validation failed: {error}")
@@ -86,12 +91,11 @@ def mitigate(pid: int, ip: Optional[str] = None, reason: str = "") -> None:
             return
         
         print(f"[MITIGATION] Blocking {ip} via iptables...")
-                                                        
         try:
             result = subprocess.run(
-                ["iptables", "-A", "OUTPUT", "-d", ip, "-j", "DROP"],
+                ["iptables", "-I", "OUTPUT", "1", "-d", ip, "-j", "DROP"],
                 capture_output=True, text=True,
-                check=False                                          
+                check=False
             )
             if result.returncode == 0:
                 _blocked_ips.add(ip)
@@ -123,7 +127,7 @@ class ProcessExecutionMonitor:
         self._running     = False
         self.captured_events: List[Dict] = []
         self.captured_alerts: List[Dict] = []
-                                         
+        
         register_signal_handler(signal.SIGINT, self._handle_signal)
         register_signal_handler(signal.SIGTERM, self._handle_signal)
         self._load_ebpf()
@@ -154,6 +158,18 @@ class ProcessExecutionMonitor:
             print("[+] Perf buffers opened for execve + tcp_connect")
         except KeyError:
             print("[WARN] connect_events perf buffer not found — TCP monitoring skipped")
+    def _add_event(self, event: Dict) -> None:
+        """Add event with bounded storage."""
+        self.captured_events.append(event)
+        if len(self.captured_events) > MAX_CAPTURED_EVENTS:
+            self.captured_events.pop(0)
+    
+    def _add_alert(self, alert: Dict) -> None:
+        """Add alert with bounded storage."""
+        self.captured_alerts.append(alert)
+        if len(self.captured_alerts) > MAX_CAPTURED_EVENTS:
+            self.captured_alerts.pop(0)
+
     def _handle_execve_event(self, cpu, data, size) -> None:
         event = ctypes.cast(data, ctypes.POINTER(ExecveEvent)).contents
         self.event_count += 1
@@ -167,7 +183,7 @@ class ProcessExecutionMonitor:
             self._output_execve_json(event, comm, filename)
         else:
             self._output_execve_human(event, comm, filename)
-        self.captured_events.append({
+        self._add_event({
             "type": {1: "EXECVE_ENTER", 2: "EXECVE_FAILED"}.get(event.event_type, "UNKNOWN"),
             "timestamp": datetime.fromtimestamp(event.timestamp_ns / 1e9).isoformat(),
             "process": {
@@ -193,7 +209,7 @@ class ProcessExecutionMonitor:
             self._output_connect_json(event, ip)
         else:
             self._output_connect_human(event, ip)
-        self.captured_events.append({
+        self._add_event({
             "type":      "TCP_CONNECT",
             "timestamp": datetime.now().isoformat(),
             "process": {
@@ -238,7 +254,7 @@ class ProcessExecutionMonitor:
                 "alerts":    alerts,
             }
             print(f"\n[!!! ALERT !!!] {json.dumps(alert_doc)}\n", file=sys.stderr)
-            self.captured_alerts.append(alert_doc)
+            self._add_alert(alert_doc)
     def _output_execve_json(self, event: ExecveEvent,
                              comm: str, filename: str) -> None:
         etype = {1: "EXECVE_ENTER", 2: "EXECVE_FAILED"}.get(event.event_type, "UNKNOWN")
@@ -330,6 +346,12 @@ Examples:
     if not os.path.exists(args.source):
         print(f"[ERROR] BPF source not found: {args.source}")
         sys.exit(1)
+    
+    is_valid, error = validate_filepath(args.source)
+    if not is_valid:
+        print(f"[ERROR] BPF source path validation failed: {error}")
+        sys.exit(1)
+    
     if os.geteuid() != 0:
         print("[ERROR] Root privileges required. Run with sudo.")
         sys.exit(1)

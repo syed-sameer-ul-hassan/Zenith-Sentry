@@ -107,7 +107,7 @@ class HealthCheck:
             Health check result
         """
         try:
-            cpu_percent = psutil.cpu_percent(interval=1)
+            cpu_percent = psutil.cpu_percent(interval=0.1)
             
             if cpu_percent > 90:
                 return {

@@ -7,6 +7,7 @@ import os
 import logging
 import base64
 import hashlib
+import secrets
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 ENCRYPTION_KEY_ENV = "ZENITH_ENCRYPTION_KEY"
 DEFAULT_KEY_FILE = "/etc/zenith-sentry/encryption.key"
+SALT_ENV = "ZENITH_ENCRYPTION_SALT"
+DEFAULT_SALT_FILE = "/etc/zenith-sentry/encryption.salt"
+PBKDF2_ITERATIONS = 600000
 
 class EncryptionManager:
     """
@@ -37,7 +41,8 @@ class EncryptionManager:
     
     def _get_or_generate_key(self, password: Optional[str], key_file: Optional[str]) -> bytes:
         """
-        Get encryption key from environment, file, or generate one.
+        Get encryption key from environment or file.
+        Never auto-generate keys to prevent silent security degradation.
         
         Args:
             password: Optional password for key derivation
@@ -45,12 +50,13 @@ class EncryptionManager:
             
         Returns:
             32-byte encryption key
+            
+        Raises:
+            ValueError: If no key source is configured
         """
-                                        
         env_key = os.environ.get(ENCRYPTION_KEY_ENV)
         if env_key:
             try:
-                                           
                 return base64.urlsafe_b64decode(env_key.encode())
             except Exception as e:
                 logger.warning(f"Failed to decode encryption key from environment: {e}")
@@ -60,7 +66,7 @@ class EncryptionManager:
             try:
                 with open(key_path, 'rb') as f:
                     key = f.read()
-                    if len(key) == 44:                              
+                    if len(key) == 44:
                         return base64.urlsafe_b64decode(key)
                     elif len(key) == 32:
                         return base64.urlsafe_b64encode(key)
@@ -71,16 +77,15 @@ class EncryptionManager:
         
         if password:
             return self._derive_key_from_password(password)
-        else:
-                                             
-            key = Fernet.generate_key()
-            self._save_key(key, key_path)
-            logger.info(f"Generated new encryption key and saved to {key_path}")
-            return key
+        
+        raise ValueError(
+            f"No encryption key configured. Set {ENCRYPTION_KEY_ENV} environment variable "
+            f"or provide a key file at {key_path}"
+        )
     
     def _derive_key_from_password(self, password: str) -> bytes:
         """
-        Derive encryption key from password using PBKDF2.
+        Derive encryption key from password using PBKDF2 with random salt.
         
         Args:
             password: Password string
@@ -89,15 +94,43 @@ class EncryptionManager:
             32-byte derived key
         """
         password_bytes = password.encode('utf-8')
-        salt = b'zenith-sentry-salt'                                                 
+        salt = self._get_or_generate_salt()
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
-            iterations=100000,
+            iterations=PBKDF2_ITERATIONS,
         )
         key = base64.urlsafe_b64encode(kdf.derive(password_bytes))
         return key
+    
+    def _get_or_generate_salt(self) -> bytes:
+        """Load salt from environment/file or generate and store a new one."""
+        env_salt = os.environ.get(SALT_ENV)
+        if env_salt:
+            try:
+                return base64.b64decode(env_salt.encode())
+            except Exception as e:
+                logger.warning(f"Failed to decode salt from environment: {e}")
+        
+        salt_path = DEFAULT_SALT_FILE
+        if os.path.exists(salt_path):
+            try:
+                with open(salt_path, 'rb') as f:
+                    return f.read()
+            except Exception as e:
+                logger.warning(f"Failed to read salt file: {e}")
+        
+        salt = secrets.token_bytes(32)
+        try:
+            os.makedirs(os.path.dirname(salt_path), exist_ok=True)
+            with open(salt_path, 'wb') as f:
+                f.write(salt)
+            os.chmod(salt_path, 0o600)
+            logger.info(f"Generated new encryption salt and saved to {salt_path}")
+        except Exception as e:
+            logger.error(f"Failed to save salt file: {e}")
+        return salt
     
     def _save_key(self, key: bytes, key_file: str) -> None:
         """
@@ -323,21 +356,27 @@ class SecureLogHandler:
 
 def hash_password(password: str) -> str:
     """
-    Hash a password using SHA-256 (for credential storage).
-    
-    Note: For production, use bcrypt or argon2 instead.
+    Hash a password using PBKDF2-HMAC-SHA256 with random salt.
+    Uses OWASP-recommended 600,000 iterations.
     
     Args:
         password: Password to hash
         
     Returns:
-        Hex digest of hashed password
+        Hex digest of hashed password with embedded salt
     """
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    salt = secrets.token_hex(32)
+    hash_value = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        PBKDF2_ITERATIONS
+    )
+    return f"{salt}${hash_value.hex()}"
 
 def verify_password(password: str, hashed: str) -> bool:
     """
-    Verify a password against a hash.
+    Verify a password against a PBKDF2 hash.
     
     Args:
         password: Password to verify
@@ -346,4 +385,16 @@ def verify_password(password: str, hashed: str) -> bool:
     Returns:
         True if password matches hash, False otherwise
     """
-    return hash_password(password) == hashed
+    try:
+        salt, stored_hash = hashed.split('$', 1)
+        hash_value = hashlib.pbkdf2_hmac(
+            'sha256',
+            password.encode('utf-8'),
+            salt.encode('utf-8'),
+            PBKDF2_ITERATIONS
+        )
+        return hash_value.hex() == stored_hash
+    except ValueError:
+        return False
+    except Exception:
+        return False

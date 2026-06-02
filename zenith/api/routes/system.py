@@ -2,7 +2,7 @@
 """
 System-related API routes.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from typing import Dict, Any
 import platform
 import psutil
@@ -62,7 +62,7 @@ async def get_system_resources() -> Dict[str, Any]:
     }
 
 @router.get("/processes", summary="Get running processes")
-async def get_processes(limit: int = 50) -> Dict[str, Any]:
+async def get_processes(limit: int = Query(50, ge=1, le=5000)) -> Dict[str, Any]:
     """
     Get list of running processes.
     
@@ -74,10 +74,12 @@ async def get_processes(limit: int = 50) -> Dict[str, Any]:
     """
     processes = []
     count = 0
+    total = 0
     
     for proc in psutil.process_iter(['pid', 'name', 'username', 'cmdline']):
+        total += 1
         if count >= limit:
-            break
+            continue
         try:
             processes.append({
                 "pid": proc.info['pid'],
@@ -90,7 +92,7 @@ async def get_processes(limit: int = 50) -> Dict[str, Any]:
             continue
     
     return {
-        "total": len(list(psutil.process_iter())),
+        "total": total,
         "processes": processes
     }
 

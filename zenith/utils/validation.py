@@ -65,7 +65,20 @@ def validate_filepath(filepath: Union[str, Path]) -> Tuple[bool, Optional[str]]:
         
         if not is_allowed:
             logger.warning(f"Path outside allowed directories: {abs_path}")
-                                                                      
+            return False, f"Path outside allowed directories: {abs_path}"
+        
+        try:
+            real_path = os.path.realpath(abs_path)
+            real_allowed = False
+            for allowed in ALLOWED_PATHS:
+                if real_path.startswith(allowed):
+                    real_allowed = True
+                    break
+            if not real_allowed:
+                return False, f"Resolved path outside allowed directories: {real_path}"
+        except (OSError, ValueError):
+            return False, "Invalid path resolution"
+        
         suspicious_chars = ['\x00', '\r', '\n']
         for char in suspicious_chars:
             if char in filepath_str:
@@ -180,9 +193,24 @@ def validate_ebpf_source(filepath: Union[str, Path]) -> Tuple[bool, Optional[str
     
     try:
         with open(filepath_str, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read(1000)                  
+            content = f.read()
+            if len(content) == 0:
+                return False, "eBPF source file is empty"
             if 'BPF' not in content and 'bpf' not in content:
                 logger.warning(f"File may not be a valid eBPF source: {filepath_str}")
+                return False, "File does not appear to be valid eBPF source"
+            
+            dangerous_patterns = [
+                r'system\s*\(',
+                r'popen\s*\(',
+                r'execve?\s*\(',
+                r'shell\s*\(',
+                r'`.*`',
+                r'eval\s*\(',
+            ]
+            for pattern in dangerous_patterns:
+                if re.search(pattern, content):
+                    return False, f"eBPF source contains potentially dangerous pattern: {pattern}"
                                         
     except Exception as e:
         logger.error(f"Error reading eBPF source {filepath}: {e}")
@@ -201,24 +229,30 @@ def sanitize_path(path: str) -> str:
         Sanitized path string
     """
     try:
-                           
         path = path.replace('\x00', '')
-        
         path = path.replace('\r', '').replace('\n', '')
-        
         path = path.strip()
         
+        if not path:
+            return ""
+        
         path = os.path.expanduser(path)
-        
-        path = os.path.abspath(path)
-        
         path = os.path.normpath(path)
         
-        return path
+        abs_path = os.path.abspath(path)
+        
+        try:
+            real_path = os.path.realpath(abs_path)
+            if real_path != abs_path:
+                logger.warning(f"Path contains symlinks: {abs_path} -> {real_path}")
+        except (OSError, ValueError):
+            pass
+        
+        return abs_path
         
     except Exception as e:
         logger.error(f"Error sanitizing path {path}: {e}")
-        return path                                         
+        return ""
 
 def validate_ip_address(ip: str) -> Tuple[bool, Optional[str]]:
     """

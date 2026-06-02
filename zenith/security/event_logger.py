@@ -6,6 +6,7 @@ Logs security events separately from regular logs for correlation and analysis.
 import logging
 import json
 import time
+import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from enum import Enum
@@ -66,8 +67,9 @@ class SecurityEvent:
         self.event_id = self._generate_event_id()
     
     def _generate_event_id(self) -> str:
-        """Generate unique event ID."""
-        return f"{self.event_type.value}_{int(self.timestamp)}_{hash(self.description)}"
+        """Generate unique event ID using deterministic hash."""
+        desc_hash = hashlib.sha256(self.description.encode('utf-8')).hexdigest()[:16]
+        return f"{self.event_type.value}_{int(self.timestamp)}_{desc_hash}"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert event to dictionary for logging."""

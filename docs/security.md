@@ -14,15 +14,39 @@ This guide covers security best practices, threat modeling, and incident respons
 
 ## Security Overview
 
+### Risk Matrix
+
+```mermaid
+quadrantChart
+    title Risk Likelihood vs Impact
+    x-axis Low Likelihood --> High Likelihood
+    y-axis Low Impact --> High Impact
+    quadrant-1 Monitor
+    quadrant-2 Reduce
+    quadrant-3 Accept
+    quadrant-4 Critical (Mitigate Immediately)
+    "Plugin Code Exec": [0.9, 0.95]
+    "API Auth Bypass": [0.7, 0.9]
+    "Path Traversal": [0.6, 0.7]
+    "DoS (Unbounded)": [0.5, 0.5]
+    "Email Injection": [0.4, 0.6]
+    "Config Perm Bypass": [0.3, 0.4]
+    "Log Leak": [0.2, 0.3]
+    "Health Check DoS": [0.1, 0.2]
+```
+
 Zenith-Sentry implements defense-in-depth security with multiple layers of protection:
 
-1. **Input Validation** - All inputs are validated before processing
-2. **Command Injection Prevention** - Parameterized commands and IP whitelisting
-3. **Secure Signal Handling** - Safe signal handlers with proper cleanup
-4. **Encryption at Rest** - AES-256 encryption for sensitive data
-5. **Secure Logging** - PII redaction and security event correlation
-6. **Authentication** - JWT tokens and API key authentication
-7. **Authorization** - Role-based access control (RBAC)
+1. **Input Validation** - All file paths, IPs, and directories are validated before processing
+2. **Command Injection Prevention** - Parameterized commands (no shell=True), IP whitelisting, path sanitization
+3. **Secure Signal Handling** - Reentrant-safe signal handlers with proper cleanup and masking
+4. **Encryption at Rest** - AES-256 encryption with PBKDF2-HMAC-SHA256 key derivation (600,000 iterations)
+5. **Secure Logging** - PII redaction, security event correlation, deterministic SHA-256 event IDs
+6. **Authentication** - JWT tokens and API keys with constant-time comparison (hmac.compare_digest)
+7. **Authorization** - Role-based access control (RBAC) with admin checks on defense endpoints
+8. **Memory Safety** - Bounded storage limits on scans (1000), findings (10000), blocked IPs (1000), events (10000)
+9. **Symlink Defense** - os.path.realpath resolution prevents path traversal via symlinks
+10. **Plugin Sandboxing** - Dangerous import scanning, size limits (1MB), count limits (50), path validation
 
 ## Threat Model
 
@@ -107,73 +131,78 @@ api:
 **Threat**: Attacker bypasses authentication mechanisms
 
 **Mitigation**:
-- Strong JWT secret keys
-- API key hashing with bcrypt
+- JWT secret keys required from environment (no defaults)
+- API key verification with constant-time comparison (hmac.compare_digest)
 - Token expiration
-- Multi-factor authentication (MFA)
+- All API routes require authentication (no anonymous endpoints)
+- Auto-generated encryption keys rejected; explicit configuration required
 
 ```python
-# Secure token generation
-from jose import jwt
-from datetime import datetime, timedelta
-
-token = jwt.encode(
-    {
-        "sub": user_id,
-        "exp": datetime.utcnow() + timedelta(hours=1)
-    },
-    SECRET_KEY,
-    algorithm="HS256"
-)
+# Secure API key verification
+import hmac
+expected_key = _get_valid_api_keys()
+if not any(hmac.compare_digest(key, provided_key) for key in expected_key):
+    raise HTTPException(status_code=403, detail="Invalid API key")
 ```
 
 ### Attack Surface
 
 | Component | Risk Level | Mitigation |
 |-----------|------------|------------|
-| API Endpoints | High | Authentication, rate limiting, input validation |
-| eBPF Monitor | High | Root required, kernel-level access |
+| API Endpoints | High | Authentication on all routes, no CORS, localhost bind, input validation |
+| eBPF Monitor | High | Root required, path validation, bounded storage, IP whitelist |
 | Database | Medium | Encryption, access control, TLS |
-| Log Files | Medium | PII redaction, secure permissions |
-| Configuration | Medium | Validation, secure defaults |
-| Network Operations | High | IP validation, whitelisting |
+| Log Files | Medium | PII redaction, secure permissions (0o700/0o600) |
+| Configuration | Medium | Validation, permission enforcement (world-readable rejected) |
+| Network Operations | High | IP validation, whitelisting, iptables insert (not append) |
+| Plugin Loading | High | Dangerous import scanning, size/count limits, path validation |
 
 ## Security Architecture
 
 ### Defense in Depth
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Network Layer                       │
-│  Firewall, TLS, Network Segmentation, DDoS Protection   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│                  Application Layer                      │
-│  Authentication, Authorization, Rate Limiting, Input    │
-│  Validation, Secure Headers, CSRF Protection            │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│                   Data Layer                            │
-│  Encryption at Rest, TLS in Transit, Access Control,    │
-│  Audit Logging, Data Retention Policies                 │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│                  System Layer                           │
-│  Secure Signal Handling, Privilege Separation,          │
-│  Capability Dropping, Systemd Hardening                 │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph NL["Network Layer"]
+        FW["Firewall"]
+        TLS["TLS"]
+        NS["Network Segmentation"]
+    end
+
+    subgraph AL["Application Layer"]
+        AUTH["Authentication (JWT/API Keys)"]
+        RBAC["Authorization (RBAC)"]
+        IV["Input Validation"]
+        RL["Rate Limiting"]
+    end
+
+    subgraph DL["Data Layer"]
+        ENC["AES-256 Encryption"]
+        ACL["Access Control (0o700/0o600)"]
+        AUDIT["Audit Logging"]
+        RET["Data Retention"]
+    end
+
+    subgraph SL["System Layer"]
+        SSH["Secure Signal Handling"]
+        PS["Privilege Separation"]
+        CD["Capability Dropping"]
+        SH["Systemd Hardening"]
+    end
+
+    NL --> AL
+    AL --> DL
+    DL --> SL
 ```
 
 ### Security Controls
 
 #### Authentication
-- JWT tokens with expiration
-- API key authentication with bcrypt hashing
-- Password hashing with bcrypt
+- JWT tokens with expiration (secret from env only)
+- API key authentication with constant-time comparison
+- Password hashing with PBKDF2-HMAC-SHA256 + random salt (600,000 iterations)
 - Session management
+- All API routes require authentication
 
 #### Authorization
 - Role-based access control (RBAC)
@@ -182,16 +211,100 @@ token = jwt.encode(
 - Audit logging of access attempts
 
 #### Data Protection
-- AES-256 encryption for sensitive data
+- AES-256 encryption for sensitive data with PBKDF2 key derivation
 - TLS for database connections
 - PII redaction in logs
-- Secure file permissions
+- Secure file permissions (0o700 dirs, 0o600 files)
+- Config files with insecure permissions are rejected
 
 #### Monitoring
-- Security event logging
+- Security event logging with deterministic SHA-256 event IDs
 - Anomaly detection
-- Alerting on suspicious activity
-- Audit trail retention
+- Alerting on suspicious activity with email header injection prevention
+- Audit trail retention with bounded in-memory storage
+
+### Authentication Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User/API Client
+    participant API as FastAPI
+    participant AUTH as Auth Module
+    participant JWT as JWT Handler
+
+    U->>API: Request with Bearer token
+    API->>AUTH: Extract token
+    AUTH->>JWT: decode_jwt_token(token)
+    JWT-->>AUTH: payload / ExpiredSignatureError
+    alt Token valid
+        AUTH-->>API: user payload
+        API-->>U: 200 OK + data
+    else Token expired
+        AUTH-->>API: raise HTTPException(401)
+        API-->>U: 401 Unauthorized
+    else Token invalid
+        AUTH-->>API: raise HTTPException(403)
+        API-->>U: 403 Forbidden
+    end
+```
+
+### Incident Response State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Detection
+    Detection --> Analysis: Threat detected
+    Analysis --> Containment: Confirmed threat
+    Analysis --> Detection: False positive
+    Containment --> Eradication: Threat isolated
+    Eradication --> Recovery: Malware removed
+    Recovery --> Monitoring: Service restored
+    Monitoring --> Detection: Recurrence observed
+    Monitoring --> [*]: Incident closed
+```
+
+### Security Requirements
+
+```mermaid
+requirementDiagram
+    requirement encryption_req {
+        id: SEC-001
+        text: All sensitive data must be encrypted at rest using AES-256
+        risk: high
+        verifymethod: test
+    }
+    requirement auth_req {
+        id: SEC-002
+        text: All API endpoints must require authentication
+        risk: high
+        verifymethod: test
+    }
+    requirement path_req {
+        id: SEC-003
+        text: All file paths must be validated before access
+        risk: high
+        verifymethod: test
+    }
+    requirement plugin_req {
+        id: SEC-004
+        text: Plugins must be scanned for dangerous imports
+        risk: medium
+        verifymethod: inspection
+    }
+    requirement bound_req {
+        id: SEC-005
+        text: All collections must have bounded size limits
+        risk: medium
+        verifymethod: test
+    }
+    requirement log_req {
+        id: SEC-006
+        text: Logs must sanitize PII before writing
+        risk: low
+        verifymethod: test
+    }
+```
 
 ## Best Practices
 

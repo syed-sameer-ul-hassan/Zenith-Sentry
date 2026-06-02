@@ -2,12 +2,13 @@
 """
 FastAPI main application for Zenith-Sentry REST API.
 """
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 import logging
 from datetime import datetime
 from typing import Dict, Any
+
+from zenith.api.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -15,17 +16,9 @@ app = FastAPI(
     title="Zenith-Sentry API",
     description="Linux Endpoint Detection and Response (EDR) REST API",
     version="2.1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],                                                               
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
 )
 
 @app.get("/", tags=["Root"])
@@ -33,10 +26,9 @@ async def root() -> Dict[str, Any]:
     """Root endpoint with API information."""
     return {
         "name": "Zenith-Sentry API",
-        "version": "0.1.0",
+        "version": "2.1.0.0",
         "status": "operational",
         "endpoints": {
-            "docs": "/docs",
             "health": "/health",
             "api": "/api/v1"
         }
@@ -52,9 +44,9 @@ async def api_status() -> Dict[str, Any]:
     """Get API and system status."""
     return {
         "api_status": "operational",
-        "version": "0.1.0",
+        "version": "2.1.0.0",
         "features": {
-            "eBPF_monitoring": False,                                             
+            "eBPF_monitoring": False,
             "mitigation": True,
             "telemetry": True
         }
@@ -70,27 +62,30 @@ async def global_exception_handler(request, exc):
     )
 
 from zenith.api.routes import scans, findings, system, defense
-app.include_router(scans.router, prefix="/api/v1/scans", tags=["Scans"])
-app.include_router(findings.router, prefix="/api/v1/findings", tags=["Findings"])
-app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
-app.include_router(defense.router, prefix="/api/v1/defense", tags=["Defense"])
-
-from prometheus_client import make_asgi_app
-metrics_app = make_asgi_app()
-
-@app.get("/metrics", tags=["Monitoring"])
-async def metrics():
-    """Prometheus metrics endpoint."""
-    from fastapi.responses import Response
-    from prometheus_client import generate_latest
-    return Response(generate_latest(), media_type="text/plain")
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """Comprehensive health check endpoint."""
-    from zenith.monitoring.health import get_health_check
-    health_check = get_health_check()
-    return health_check.run_all_checks()
+app.include_router(
+    scans.router,
+    prefix="/api/v1/scans",
+    tags=["Scans"],
+    dependencies=[Depends(get_current_user)]
+)
+app.include_router(
+    findings.router,
+    prefix="/api/v1/findings",
+    tags=["Findings"],
+    dependencies=[Depends(get_current_user)]
+)
+app.include_router(
+    system.router,
+    prefix="/api/v1/system",
+    tags=["System"],
+    dependencies=[Depends(get_current_user)]
+)
+app.include_router(
+    defense.router,
+    prefix="/api/v1/defense",
+    tags=["Defense"],
+    dependencies=[Depends(get_current_user)]
+)
 
 @app.get("/health/ready", tags=["Health"])
 async def readiness_check():
@@ -111,4 +106,4 @@ async def liveness_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

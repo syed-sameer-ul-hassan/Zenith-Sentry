@@ -96,7 +96,12 @@ class ZenithEngine:
             else:
                 score = 0
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            os.makedirs("user_data", exist_ok=True)
+            import secrets
+            random_suffix = secrets.token_hex(8)
+            report_dir = os.path.join(os.path.dirname(__file__), "..", "user_data")
+            report_dir = os.path.abspath(report_dir)
+            os.makedirs(report_dir, exist_ok=True)
+            os.chmod(report_dir, 0o700)
             report_data = {
                 "score": score,
                 "timestamp": timestamp,
@@ -113,9 +118,10 @@ class ZenithEngine:
                     for f in findings
                 ]
             }
-            report_path = f"user_data/scan_{timestamp}.json"
+            report_path = os.path.join(report_dir, f"scan_{timestamp}_{random_suffix}.json")
             with open(report_path, "w") as f:
                 json.dump(report_data, f, indent=2)
+            os.chmod(report_path, 0o600)
             logger.info(f"Report saved to {report_path}")
             if self.args.json:
                 print(json.dumps(report_data))

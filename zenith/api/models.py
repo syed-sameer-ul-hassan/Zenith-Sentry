@@ -49,10 +49,17 @@ class ScanRequest(BaseModel):
 
     @validator('scan_type')
     def validate_scan_type(cls, v):
-                                                                                           
         if not isinstance(v, str) or not v.strip():
             raise ValueError("scan_type must be a non-empty string")
         return v.strip().lower()
+    
+    @validator('target_dirs', each_item=True)
+    def validate_target_dir(cls, v):
+        from zenith.utils.validation import validate_filepath
+        is_valid, error = validate_filepath(v)
+        if not is_valid:
+            raise ValueError(f"Invalid target directory: {error}")
+        return v
 
 class ScanResponse(BaseModel):
     """Scan response model."""

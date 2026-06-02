@@ -10,12 +10,10 @@ from zenith.api.routes import _shared
 
 router = APIRouter()
 
-_findings: List[FindingResponse] = _shared.findings
-
 @router.get("/", response_model=List[FindingResponse], summary="List all findings")
 async def list_findings(
     limit: int = Query(50, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10000),
     risk_level: Optional[RiskLevel] = Query(None),
     severity: Optional[Severity] = Query(None),
     since: Optional[datetime] = Query(None)
@@ -33,7 +31,7 @@ async def list_findings(
     Returns:
         List of findings
     """
-    filtered = _findings
+    filtered = _shared.findings
     
     if risk_level:
         filtered = [f for f in filtered if f.risk == risk_level]
@@ -59,7 +57,7 @@ async def get_finding(finding_id: str) -> FindingResponse:
     Returns:
         Finding details
     """
-    for finding in _findings:
+    for finding in _shared.findings:
         if finding.id == finding_id:
             return finding
     
@@ -73,19 +71,19 @@ async def get_findings_summary() -> dict:
     Returns:
         Dictionary with statistics
     """
-    total = len(_findings)
+    total = len(_shared.findings)
     
     risk_counts = {}
     for risk in RiskLevel:
-        risk_counts[risk.value] = len([f for f in _findings if f.risk == risk])
+        risk_counts[risk.value] = len([f for f in _shared.findings if f.risk == risk])
     
     severity_counts = {}
     for severity in Severity:
-        severity_counts[severity.value] = len([f for f in _findings if f.severity == severity])
+        severity_counts[severity.value] = len([f for f in _shared.findings if f.severity == severity])
     
     return {
         "total": total,
         "by_risk": risk_counts,
         "by_severity": severity_counts,
-        "last_updated": datetime.utcnow().isoformat() if _findings else None
+        "last_updated": datetime.utcnow().isoformat() if _shared.findings else None
     }
