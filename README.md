@@ -1,10 +1,11 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/Status-On%20Hiatus-red?style=for-the-badge" alt="Status"/>
+  <img src="https://img.shields.io/badge/Status-Studying-blue?style=for-the-badge" alt="Status"/>
   <br><br>
-  <h3>📚 Temporary Absence Notice</h3>
-  <p>I will be unavailable to review issues, pull requests, or push updates until <b>June 27, 2026</b> due to academic commitments.</p>
-  <p><i>See you back soon!</i></p>
+  <h3>🎓 Notice: Temporary Absence</h3>
+  <p>There will be no updates or responses on this repository until <b>June 27, 2026</b>.</p>
+  <p><i>Currently focusing on my studies and exams. Thank you for your patience! 📚</i></p>
 </div>
+
 
 
 <p align="center">
