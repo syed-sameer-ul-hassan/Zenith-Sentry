@@ -1,3 +1,12 @@
+<div align="center">
+  <img src="https://img.shields.io/badge/Status-On%20Hiatus-red?style=for-the-badge" alt="Status"/>
+  <br><br>
+  <h3>📚 Temporary Absence Notice</h3>
+  <p>I will be unavailable to review issues, pull requests, or push updates until <b>June 27, 2026</b> due to academic commitments.</p>
+  <p><i>See you back soon!</i></p>
+</div>
+
+
 <p align="center">
   <img src="assets/logo.svg" alt="Zenith-Sentry Logo" width="600"/>
 </p>
