@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/Status-Studying-blue?style=for-the-badge" alt="Status"/>
-  <br><br>
-  <h3>🎓 Notice: Temporary Absence</h3>
-  <p>There will be no updates or responses on this repository until <b>June 27, 2026</b>.</p>
-  <p><i>Currently focusing on my studies and exams. Thank you for your patience! 📚</i></p>
+
+| 🎓 **Absence Notice** |
+| :--- |
+| I am currently busy with my studies and exams. There will be no project updates or responses until **June 27, 2026**. <br> *Thank you for your patience and understanding!* |
+
 </div>
 
 
