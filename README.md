@@ -2,7 +2,7 @@
 
 | 🎓 **Absence Notice** |
 | :--- |
-| I am currently busy with my studies and exams. There will be no project updates or responses until **June 27, 2026**. <br>. *Thank you for your patience and understanding!* |
+| I am currently busy with my studies and exams. There will be no project updates or responses until **June 27, 2026**. <br> *Thank you for your patience and understanding!* |
 
 </div>
 
